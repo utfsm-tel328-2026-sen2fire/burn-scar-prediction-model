@@ -252,6 +252,11 @@ con Sentinel-3 la cadencia es más regular y la geometría del dato es más simp
 decisión es revisable** si en la fase 1 se ve que la cadencia, y no la resolución, es el
 cuello de botella.
 
+> ⚠️ **HLS no es rápido.** La revisita de 1,4 días es una media global; el dato **tarda
+> 2-3 días en estar disponible** (HLS v2.0), y la versión de baja latencia (HLS-LL, <6 h)
+> no estará hasta 2027. Si la cadencia resultara ser el cuello de botella, HLS a 30 m no es
+> la respuesta: es más frecuente pero más lento de recibir que un OLCI NRT.
+
 ---
 
 ## 5. Diseño del dataset
@@ -260,27 +265,64 @@ cuello de botella.
 
 Una **serie** = un (incendio, AOI) con delineaciones fechadas. Un archivo por serie.
 
+El dataset tiene **dos ejes temporales** y una regla que los une:
+
+- **Eje T (frames OLCI)**: una adquisición cada ~2 días. Es el eje de las entradas.
+- **Eje T' (rondas CEMS)**: delineaciones en fechas irregulares. Es el eje de las etiquetas.
+
+> **Regla de unión: una muestra por frame OLCI.** Para cada frame *f*:
+> entrada = todos los frames hasta *f* + la última ronda con `observed_time ≤ f`;
+> target = lo nuevo quemado entre *f* y la ronda siguiente.
+> Es la formulación que **reproduce la operación** (se actualiza cada ~2 días) y da hasta
+> ~551 candidatas (frame, serie) en vez de 359 transiciones.
+
 ```
   EMSR922__AOI01.npz
 
-  ENTRADAS  (eje temporal T)
+  ENTRADAS  (eje temporal T = frames OLCI)
   ------------------------------------------------------------------
    OLCI     (T,  5, H, W)  uint16   reflectancia TOA, 5 bandas, ~2 días
    S1       (T,  2, H, W)  float16  VV, VH (radar), ~6 días
    ERA5     (T,  6, H, W)  float16  viento u/v, Tmax, humedad, precipitación
-   scar     (T,  H,   W)   float16  último polígono CEMS (fracción quemada)
+   scar     (T,  H,   W)   float16  quemado conocido en f (fracción quemada)
+   scar_ok  (T,)           bool     ¿hay ronda previa? (arranque en frío)
    estáticas(4,  H, W)     float32  elevación, pendiente, orientación, cobertura
 
-  SALIDAS
+  GT        (eje temporal T' = rondas CEMS)
   ------------------------------------------------------------------
    quemado  (T', H, W)      float16  fracción quemada por ronda CEMS [0..1]
    valido   (T', H, W)      uint8    255 = "nadie miró aquí"
-   delta    (T'-1, H, W)    float16  lo NUEVO quemado entre rondas  <- TARGET
+
+  TARGET    (eje temporal T = frames, alineado con las muestras)
+  ------------------------------------------------------------------
+   delta    (T,  H, W)      float16  lo NUEVO quemado desde f hasta la ronda siguiente <- TARGET
+   target_ok(T,)            bool     ¿hay ronda objetivo? (False antes de la 1ª y después de la última)
 
   METADATOS
   ------------------------------------------------------------------
    código EMSR, AOI, fecha y sensor de cada ronda, URLs de origen
 ```
+
+El GT vive en el eje de rondas y el target en el de frames; cada frame apunta a su ronda
+anterior (`r`) y a la siguiente (`r+1`) mediante los metadatos. Los frames sin ronda
+objetivo (antes de la primera o después de la última) se marcan con `target_ok = False` y
+no entran en el entrenamiento.
+
+**Regla de causalidad del canal `scar`** (hermana de R12, §6.2): la cicatriz de entrada es
+la última delineación con `observed_time ≤ t_frame`. **Nunca** una ronda posterior, que
+filtraría quemado futuro al modelo. Dos consecuencias, ambas deseables:
+
+- El canal `scar` puede ir **desfasado** respecto al último frame (hasta un intervalo de
+  ronda). Es la situación real de operación: lo que está quemado en el frame lo deduce el
+  propio modelo a partir de la imagen, no un polígono externo.
+- Las primeras muestras de una serie (antes de la primera ronda) tienen `scar` vacío y
+  `scar_ok = False`. Se **incluyen** (§5.6): el modelo tiene que saber arrancar sin cicatriz.
+
+**La contrapartida, y cómo se va a cerrar.** Con la regla causal, el target es
+`ronda(r+1) − ronda(r)`: incluye quemado que ocurrió *entre* la ronda *r* y el frame *f*, que
+ya estaba visible en la imagen que se le da. Es decir, **la tarea queda algo más fácil que
+la real**. Cerrarlo exige saber el quemado exacto en *f*, que solo tiene la cabeza de
+delineación: es el plan de dos fases de §5.6 y §6.4.
 
 ### 5.2 El censo medido (Mediterráneo, 2023-2026)
 
@@ -298,6 +340,12 @@ Una **serie** = un (incendio, AOI) con delineaciones fechadas. Un archivo por se
 | Frames por serie | mediana 4 · media 5,7 · máx 26 |
 | Observaciones (serie, frame) | 551 |
 | Distribución de rondas por serie | 2→33, 3→25, 4→8, 5→6, 6→2, 7→5, 8→1, 9→6, 10→1, 11→4, 13→1, 16→1, 17→1, 18→1, 25→1 |
+
+> **Nota sobre el conteo de frames.** El recuento "frames por serie" (mediana 4) incluye el
+> producto **FEP** (primera estimación) de cada serie: por eso la mediana de *rondas* es 3 y
+> la de *frames* es 4, y la media 4,74 vs 5,74. **El FEP se excluye de la serie de etiquetas**
+> (D5, §5.6): es una estimación de baja resolución y meterla importaría un borde grueso.
+> Excluido el FEP, la mediana de rondas por serie es 3.
 
 Añadiendo el periodo pre-2023 (2012-2022, accesible por otra vía, §7 R1) el total
 mediterráneo sube a **~162 series y ~490 transiciones**.
@@ -363,6 +411,43 @@ depende del AOI: en los AOIs grandes sí es de un orden de magnitud.
 
 Esto no añade eventos, pero hace el entrenamiento mucho más eficiente.
 
+### 5.6 Reglas del dataset
+
+Resumen operativo de lo que hay que respetar al construir las muestras. Es la
+especificación que se implementa y la que se revisa al auditar una etiqueta.
+
+| # | Regla | Por qué |
+|---|---|---|
+| **D1** | **Causalidad de la cicatriz**: la entrada `scar` es la última ronda con `observed_time ≤ t_frame` | Una ronda posterior filtra quemado futuro al modelo (R15) |
+| **D2** | **Cuantificado, no binario**: la etiqueta es la fracción de área quemada del píxel | La regla OR ("cualquier píxel de 10 m") infla el área un 34% (TMB-S3) |
+| **D3** | **Máscara de validez por ronda**: `255` = "nadie miró aquí". El target se evalúa en `valido(r) ∩ valido(r+1)` | Fuera de la máscara no hay dato, no hay "no quemado" (R4, R10) |
+| **D4** | **Cambio de sensor**: la transición se conserva, pero se guarda el sensor de cada ronda y la evaluación se estratifica | Parte del "crecimiento" entre rondas es diferencia de detección, no propagación (R14) |
+| **D5** | **FEP excluido** de la serie de etiquetas | Es una primera estimación de baja resolución; meterla mete un borde grueso |
+| **D6** | **Arranque en frío incluido**: las muestras anteriores a la primera ronda entran, con `scar_ok = False` | El primer ciclo de un incendio real no tiene cicatriz (R16) |
+| **D7** | **Sensor y `observed_time` de cada ronda**, siempre, en metadatos y en evaluación | Permite estratificar (R14) y auditar cualquier muestra |
+| **D8** | **Split por cluster geográfico**, nunca aleatorio | Fuga espacial (R5) |
+
+**Plan de entrenamiento en dos fases.** El hueco que queda abierto —que en entrenamiento la
+cicatriz es gold y en operación es la salida del propio modelo— se cierra así:
+
+```
+  FASE A   Entrena SOLO la cabeza de delineación
+           etiquetas: CEMS (489 delineaciones) + MCD64A1 + FireCCI
+           salida: "qué está quemado en el frame f"
+
+  FASE B   Congela (o afina despacio) la Fase A y usa SU SALIDA
+           como canal `scar` de la entrada de la cabeza de propagación
+```
+
+Con la Fase B, entrenamiento y operación usan **el mismo mecanismo**, sin excepciones: la
+cicatriz sale siempre de una predicción. Además, en la Fase A el modelo de delineación ve
+millones de etiquetas baratas (§6.4), lo que regulariza a la cabeza de propagación, que solo
+dispone de 96 series.
+
+Mientras la Fase A no exista, se aplica **ruido de corrupción** sobre la cicatriz gold en la
+Fase B: se borra un ~15% de los píxeles quemados al azar y se dilata o erosiona el borde un
+píxel. Es una red de seguridad barata, no un sustituto de la Fase A.
+
 ---
 
 ## 6. Qué necesita el modelo en inferencia
@@ -425,6 +510,11 @@ fuego ya estaba quemando**.
 > la última observación OLCI disponible en ese intervalo, no desde la ronda de CEMS. Si no,
 > el modelo aprende a predecir un horizonte que nunca tendrá en operación.
 
+> **La misma regla, aplicada al canal "cicatriz conocida".** Es el gemelo de esta: si la
+> cicatriz de entrada proviene de una ronda con `observed_time` **posterior** al último frame
+> OLCI, se le está enseñando al modelo parte de la respuesta. Regla D1 (§5.6): la cicatriz de
+> entrada es la última ronda con `observed_time ≤ t_frame`.
+
 ### 6.3 La cicatriz conocida: por qué CEMS no sirve en operación
 
 En el entrenamiento, la entrada "cicatriz conocida" es la última delineación de CEMS. Pero
@@ -468,14 +558,30 @@ un **train/test shift** silencioso. Tres salidas:
 Por qué esto es claramente mejor:
 
 1. **Hace el pipeline operacional de verdad**: no depende de una activación de emergencia.
-2. **Elimina el train/test shift**: en entrenamiento y en operación la "cicatriz conocida"
-   viene del mismo mecanismo.
+2. **Elimina la dependencia de CEMS en inferencia**: en operación la "cicatriz conocida" la
+   produce el propio modelo, no un analista.
 3. **Da una señal auxiliar densa**: la cabeza de delineación se puede entrenar con
    **MCD64A1, FireCCI y CEMS** (millones de etiquetas baratas), y regulariza a la cabeza
    de propagación, que solo dispone de 96 series.
 4. Es lo que hacen los dos trabajos más cercanos al problema: TMB-S3 es un modelo de
    delineación, y el preentrenamiento con MCD64A1 (§9.1) convierte la delineación en una
    tarea auxiliar natural.
+
+> **Matiz importante (no es que "elimina el train/test shift", es que lo cambia de
+> naturaleza).** Quitar CEMS del camino de inferencia resuelve el problema serio. Pero
+> queda otro más pequeño: en entrenamiento la cicatriz sería *gold* (un polígono de
+> analista, a 10-50 cm) y en operación es la salida del propio modelo (a 300 m, con
+> errores). Si el modelo se entrena solo con la cicatriz gold, aprende a depender de una
+> entrada que en producción no tendrá. Se cubre con dos mecanismos, ambos descritos en
+> §5.6:
+>
+> - **Ruido de corrupción** sobre la cicatriz gold durante el entrenamiento (píxeles
+>   quemados borrados al azar, borde dilatado o erosionado un píxel).
+> - **Entrenamiento en dos fases**: la Fase A entrena la cabeza de delineación y su salida
+>   es la que alimenta a la cabeza de propagación. Entrenamiento y operación usan entonces
+>   **el mismo mecanismo**, sin excepciones.
+>
+> Con la Fase B, además, el target deja de incluir quemado ya visible en la imagen (§5.1).
 
 > **Recomendación: que el modelo sea multi-tarea desde el principio.** No es complicación
 > extra: es la diferencia entre un proyecto de investigación y un producto.
@@ -510,8 +616,11 @@ Por qué esto es claramente mejor:
 
 | Cambio | Por qué |
 |---|---|
-| **Modelo multi-tarea** (delineación + propagación) | Hace el pipeline operacional y elimina el train/test shift de la "cicatriz conocida" |
-| **Horizonte anclado en la última observación** | Si no, el modelo se entrena con horizontes que nunca tendrá en operación |
+| **Modelo multi-tarea** (delineación + propagación) | Hace el pipeline operacional y quita CEMS del camino de inferencia (§6.4) |
+| **Horizonte anclado en la última observación** | Si no, el modelo se entrena con horizontes que nunca tendrá en operación (§6.2) |
+| **Cicatriz de entrada anclada en `observed_time ≤ t_frame`** | Una ronda posterior filtra quemado futuro al modelo. Es el gemelo de la regla del horizonte (§5.6 D1) |
+| **Muestra por frame OLCI**, no por ronda CEMS | Reproduce la cadencia de operación y da más muestras (§5.1) |
+| **Entrenamiento en dos fases** + ruido de corrupción en la cicatriz | Cierra el hueco entre la cicatriz gold (entrenamiento) y la predicha (operación) (§5.6) |
 | **El input de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
 | **FIRMS/VIIRS como canal adicional** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
 
@@ -531,9 +640,13 @@ Por qué esto es claramente mejor:
 | **R8** | **La cicatriz no es propagación** | — | Resuelto por diseño: multi-horizonte con el frente activo |
 | **R9** | **Horizonte irregular**: las rondas de CEMS no están espaciadas uniformemente | Medio | Horizonte variable como entrada, o cabezas agrupadas en corto/medio/largo. No prometer "t+1d" fijo |
 | **R10** | **El AOI cambia entre rondas**: la máscara de "nadie miró" es la de cada producto | Medio | Usar la máscara de la ronda correspondiente, no un AOI único |
-| **R11** | **Train/test shift en la "cicatriz conocida"**: se entrena con delineaciones de CEMS pero en operación no hay CEMS | Alto | Modelo multi-tarea: la cabeza de delineación produce la cicatriz conocida en ambos casos (§6.3-6.4) |
+| **R11** | **Train/test shift en la "cicatriz conocida"**: se entrena con delineaciones de CEMS pero en operación no hay CEMS | Alto | Modelo multi-tarea: la cabeza de delineación produce la cicatriz conocida (§6.3-6.4). El shift residual gold↔predicción se cubre con las dos fases y el ruido (§5.6) |
 | **R12** | **El horizonte se ancla en `event_time` en vez de en la última observación** | Alto | Anclar siempre en `observed_time` / en el último frame OLCI disponible (§6.2). Verificarlo en la definición del dataset |
 | **R13** | **La latencia NRT no está garantizada**: incidents de ground segment (mayo 2026) y ventana de archivo NRT limitada | Medio | Product pipeline que monitorice la latencia real y que degrade con elegancia a NTC; no asumir timings |
+| **R14** | **El cambio de sensor entre rondas infla el "crecimiento" medido**: al pasar de una imagen de 10 m a una de 50 cm el analista "ve" un borde que antes no se podía resolver. Parte del incremento no es propagación, es diferencia de detección | Alto: el ruido se concentra en la banda del frente, que es justo lo que se predice | Medir el % de transiciones con sensor distinto; estratificar la evaluación por ese criterio y evaluar la métrica principal en el subconjunto "limpio" (mismo sensor o GSD comparable). Guardar el sensor de cada ronda (D4, D7) |
+| **R15** | **Fuga temporal en el canal "cicatriz conocida"**: si la ronda de entrada es posterior al último frame, el modelo recibe parte de la respuesta | Alto: infla las métricas de forma silenciosa | Regla D1: la cicatriz de entrada es la última ronda con `observed_time ≤ t_frame` (§5.1, §5.6). Comprobación obligatoria en el constructor del dataset |
+| **R16** | **Arranque en frío**: el primer ciclo de un incendio no tiene cicatriz previa, una entrada que el modelo nunca vio si todas las muestras de entrenamiento tienen ronda ≥2 | Medio: en operación, el primer ciclo es el más visible para el usuario | Incluir en el entrenamiento las muestras anteriores a la primera ronda, con el flag `scar_ok` (D6, §5.6) |
+| **R17** | **Hueco gold ↔ predicción en la cicatriz**: en entrenamiento es un polígono perfecto de analista; en operación, la salida del propio modelo a 300 m con errores | Medio: el modelo se entrena con una entrada más limpia de la que tendrá en producción | Entrenamiento en dos fases + ruido de corrupción sobre la cicatriz gold (§5.6, §6.4) |
 
 ---
 
@@ -561,6 +674,12 @@ el proyecto en una evaluación.
 | **Horizonte anclado en la última observación** | Anclar en `event_time` o en la ronda de CEMS | Se acreditaría tiempo en el que el fuego ya estaba quemando; el modelo aprendería horizontes que no tendrá en operación (§6.2) |
 | **Meteo de pronóstico** (GFS/ECMWF) además del análisis (ERA5) | Solo ERA5-Land | El análisis describe el pasado; para anticipar el frente hace falta el viento futuro (§6.7) |
 | **FIRMS/VIIRS como canal de entrada** | Omitirlo, por ser grueso y ruidoso | Es la señal más timely sobre dónde está el fuego ahora mismo; aporta el ancla en tiempo real |
+| **Una muestra por frame OLCI** | Una muestra por ronda CEMS / rejilla diaria | Reproduce la cadencia de operación (~551 candidatas frente a 359 transiciones) y hace que el arranque en frío aparezca solo (§5.1) |
+| **Cicatriz de entrada causal** (`observed_time ≤ t_frame`) | Usar la última ronda, sea cuando sea | Una ronda posterior filtra quemado futuro al modelo y hace las métricas optimistas sin que se note (§5.6 D1, R15) |
+| **Sensor por ronda, evaluación estratificada** | Filtrar las transiciones con sensor distinto | Filtrar encoge un dataset que ya es pequeño; estratificar no pierde nada y el contraste es un resultado propio (§7 R14) |
+| **Entrenamiento en dos fases** (delineación → propagación) + ruido de corrupción | Solo cicatriz gold, o solo ruido aleatorio | Cierra el hueco entre la entrada perfecta del entrenamiento y la imperfecta de la operación (§5.6, R17) |
+| **FEP excluido** de la serie de etiquetas | Incluirlo como una ronda más | Es una primera estimación de baja resolución: meterla mete un borde grueso en las etiquetas (§5.6 D5) |
+| **Métrica principal por evento**, con agregadas como segundo resultado | Solo promedio por píxel | Con ~19 eventos en test, el promedio por píxel da demasiado peso a los AOIs grandes (§8, protocolo de evaluación) |
 
 ### Baselines (el termómetro del proyecto)
 
@@ -573,6 +692,26 @@ el proyecto en una evaluación.
 > **Criterio de aceptación: el modelo debe superar B2 en F1 de área recién quemada.**
 > Si una red no bate "mueve el frente según el viento", no está aprendiendo propagación:
 > está aprendiendo a rellenar ruido.
+
+### Protocolo de evaluación
+
+Con ~19 eventos en test, *cómo* se promedia importa tanto como la métrica. Fijado de
+antemano, para que no se pueda ajustar después:
+
+| Elemento | Decisión |
+|---|---|
+| **Métrica principal** | F1 del área **nuevamente quemada**, **promedio por evento** (un evento = una serie; dentro de la serie, promedio de sus muestras) |
+| **Incertidumbre** | Bandas de confianza **bootstrap** sobre los eventos del test (1.000 remuestreos) |
+| **Métrica secundaria** | F1 agregado por píxel, para poder comparar con WSTS y TS-SatFire |
+| **Binarización** | Umbral **0,5 fijado de antemano**, sin calibrar (como TMB-S3) |
+| **Máscara** | Solo píxeles válidos: `valido(r) ∩ valido(r+1)` (§5.6 D3) |
+| **Estratificación obligatoria** | Los resultados se reportan **separados** entre transiciones con el mismo sensor y transiciones que lo cambian (§7 R14). La métrica principal se da en el subconjunto "limpio", con el número completo como segundo resultado |
+| **Comparación** | Todos los baselines (B0, B1, B2) se evalúan **con el mismo protocolo y el mismo split** que el modelo |
+
+> **Por qué el promedio por evento y no por píxel.** Agregar por píxel hace que un solo AOI
+> enorme (EMSR837 tiene 111.489 píxeles, 16 veces la mediana) domine la métrica. Con 19
+> eventos en test, además, cualquier diferencia pequeña está dentro del ruido: sin bandas de
+> confianza, "el modelo bate a B2" no es una afirmación verificable.
 
 ---
 
@@ -620,8 +759,34 @@ alta resolución y observación de 300 m es del X%".
 ```
   FASE 0   Mesogeos 1 km + WildFireSpread      -> pipeline y baseline (tarea extent)
   FASE 1   CEMS + Sentinel-3 300 m              -> propagación multi-horizonte  <- NÚCLEO
+           + Fase A: cabeza de delineación (CEMS + MCD64A1 + FireCCI)
+           + Fase B: propagación con la cicatriz producida por la Fase A
   FASE 2   S1/S2 10-20 m                        -> severidad y refinado de borde
 ```
+
+Dentro de la Fase 1 hay **dos comprobaciones que van antes de entrenar**, porque cambian el
+dataset y son baratas: se hacen sobre los metadatos, sin descargar imagen.
+
+| Comprobación | Qué mide | Por qué va primero |
+|---|---|---|
+| **% de transiciones con sensor distinto** | Cuánto del "crecimiento" medido es en realidad diferencia de detección | Decide si hay que filtrar transiciones y dónde se evalúa (§7 R14) |
+| **Auditoría de causalidad** | Que ninguna muestra use una ronda con `observed_time > t_frame` | Si falla, **todas** las métricas están infladas y no hay nada que salvar (§7 R15) |
+
+Si algo va mal, es mucho más barato descubrirlo antes de construir el dataset que después
+de entrenar y evaluar.
+
+### 9.5 Preguntas abiertas nuevas (nacidas de §5.6)
+
+- **¿Cuánto cuesta la cicatriz gold frente a la cicatriz predicha?** Se puede responder
+  entrenando la Fase B con la cicatriz gold y con la de la Fase A, y comparando. Si la
+  diferencia es pequeña, el ruido de corrupción (§5.6) es suficiente y las dos fases no
+  hacen falta.
+- **¿B2 (advección por viento) aguanta el mismo?** El baseline hay que evaluarlo **con el
+  mismo protocolo estratificado** que el modelo (§8). Si B2 mejora en el subconjunto
+  "limpio" más que el modelo, el ruido de las etiquetas estaba inflateando al modelo.
+- **¿La divergencia Sentinel-3 ↔ CEMS (§9.3) es del mismo tamaño que la divergencia entre
+  sensores?** Si sí, buena parte de R14 es en realidad el mismo problema de §9.3 y se
+  atacan juntos.
 
 ---
 

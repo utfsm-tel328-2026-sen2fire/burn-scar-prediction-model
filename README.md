@@ -47,11 +47,16 @@ y con qué probabilidad.
 | Entrenamiento | Baselines B0/B1/B2 antes de la red | Si no supera la advección por viento, no está aprendiendo propagación |
 | Modelo | Multi-tarea: delineación + propagación | CEMS no existe en operación; la cabeza de delineación da la cicatriz conocida y una señal auxiliar densa |
 | Horizonte | Anclado en la última observación | Anclarlo en la hora del evento acreditaría tiempo en el que el fuego ya quemaba |
+| Muestra | Una por frame OLCI, no por ronda CEMS | Reproduce la cadencia de operación (~551 candidatas vs. 359 transiciones) |
+| Cicatriz de entrada | Solo rondas con `observed_time ≤ t_frame` | Una ronda posterior filtra quemado futuro al modelo y hace las métricas optimistas sin que se note |
+| Entrenamiento | En dos fases: delineación → propagación | En operación la cicatriz la predice el modelo, no un analista; así entrenamiento y operación usan el mismo mecanismo |
+| Evaluación | Por evento, con bootstrap, estratificada por sensor | Con ~19 eventos en test, el promedio por píxel da demasiado peso a los AOIs grandes |
 
 ## Estado
 
 **Fase de diseño.** No hay implementación todavía. El dataset está diseñado y medido
-(ver `docs/research.md` §5), pero no construido.
+(ver `docs/research.md` §5), con las reglas de construcción fijadas (§5.6), pero no
+construido.
 
 ## Estructura
 
@@ -66,10 +71,15 @@ y con qué probabilidad.
 
 ## Próximos pasos
 
-1. Construir la ingesta: CEMS vía API → cubos GEE → etiquetado cuantificado.
-2. Implementar los baselines B0/B1/B2 y fijar el protocolo de evaluación.
-3. Entrenar el primer modelo y compararlo contra los baselines.
-4. Ampliar el dataset (scraper pre-2023, preentrenamiento con MCD64A1).
+1. **Comprobaciones previas sobre los metadatos** (sin descargar imagen): % de transiciones
+   con sensor distinto y auditoría de causalidad de la cicatriz. Deciden el dataset.
+2. Construir la ingesta: CEMS vía API → cubos GEE → etiquetado cuantificado, aplicando las
+   reglas D1-D8 de `docs/research.md` §5.6.
+3. Implementar los baselines B0/B1/B2 con el protocolo de evaluación ya fijado.
+4. **Fase A**: entrenar la cabeza de delineación. **Fase B**: propagación alimentada con su
+   salida.
+5. Comparar contra los baselines y estratificar los resultados por sensor.
+6. Ampliar el dataset (scraper pre-2023, preentrenamiento con MCD64A1).
 
 ## Cómo citar los datos
 

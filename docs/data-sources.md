@@ -25,7 +25,7 @@
 | **MCD64A1** | Fecha de quema / contraste | `MODIS/061/MCD64A1` | 500 m | mensual | ~6 semanas | global | Gratis (login) |
 | **TMB-S3** | Dataset + código listo | HF `links-ads/tmb-s3` | 300 m | diario | — | Europa | Gratis (CC BY 4.0 / MIT) |
 | **WildFireSpread** | Dataset + modelos listos | HF + Kaggle | 1 km | diario | — | Mediterráneo | Gratis |
-| **Mesogeos** | Cubo de drivers | Zenodo `10.5281/zenodo.8036851` | 1 km | diario | — | Mediterráneo | Gratis |
+| **Mesogeos** | Cubo de drivers | Zenodo `10.5281/zenodo.7473331` | 1 km | diario | — | Mediterráneo | Gratis |
 | **WildfireSpreadTS** | Benchmark | NeurIPS 2023 D&B | 375 m | diario | — | US | Gratis |
 | **TS-SatFire** | Benchmark | HF `GT-Fire-Research-and-Innovation/ts-satfire` | 375 m | 12 h | — | CONUS | Gratis (CC BY 4.0) |
 
@@ -182,6 +182,16 @@ Ejemplo real (`EMSR929`, Trapezitsa, Grecia, septiembre 2026):
 
 Sirve para filtrar series rápido (descartar las de una sola ronda) y para saber de
 antemano con qué sensor se trazó cada etiqueta.
+
+> ⚠️ **El sensor de cada ronda es metadato crítico, no un detalle.** En la curva de arriba, el
+> paso de Sentinel-2 (10 m) a Legion (50 cm) ocurre entre las dos primeras rondas: parte del
+> "crecimiento" medido ahí es **diferencia de detección**, no propagación. Guardar siempre
+> el sensor de cada ronda y usarlo para **estratificar la evaluación** (riesgo R14 de
+> `research.md` §7). La regla que hay que cumplir al construir las muestras es: la cicatriz
+> de entrada es la última ronda con `observed_time ≤ t_frame` (§5.6 D1).
+
+> **FEP fuera.** El primer producto de cada serie (`FEP`, first estimate) es una estimación
+> de baja resolución: no entra en la serie de etiquetas (§5.6 D5).
 
 ### 2.6 Otras piezas de CEMS
 
@@ -446,7 +456,7 @@ residual** ("nearby events from the same geographic cluster can fall in differen
 | Modelos | UNet2D, UNet3D, Vision Transformer, ConvLSTM (checkpoints en HF) |
 | Cubo | `mesogeos_cube.zarr` · 1 km × 1 km × 1 día · 2006-04-01 → 2022-09-29 · 31 países |
 | Variables | `burned_areas`, `ignition_points` (EFFIS) · ERA5-Land · MODIS (LST, NDVI, LAI) · JRC EDO · WorldPop · C3S land cover · EU-DEM |
-| Licencia | Código Apache-2.0 · Zenodo `10.5281/zenodo.8036851` |
+| Licencia | Dataset **CC BY 4.0** · Zenodo `10.5281/zenodo.7473331` (concept DOI, apunta a la última versión; la v1.2 concreta es `8036851`) · código Apache-2.0 |
 
 **Aviso importante:** el `burned_areas` de Mesogeos viene de **perímetros finales de EFFIS**,
 no de rondas de monitorización. Soporta la tarea "área final", **no** propagación.
