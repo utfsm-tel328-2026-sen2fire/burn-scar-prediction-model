@@ -22,8 +22,10 @@
 | **FIRMS / VIIRS** | Fuego activo + FRP | NASA FIRMS | 375 m | 12 h | ~1-3 h | global | Gratis |
 | **Copernicus DEM** | Topografía | `COPERNICUS/DEM/GLO30` | 30 m | estático | — | global | Gratis |
 | **ESA WorldCover** | Combustible / cobertura | `ESA/WorldCover/v200` | 10 m | anual | — | global | Gratis |
-| **MCD64A1** | Fecha de quema / contraste | `MODIS/061/MCD64A1` | 500 m | mensual | ~6 semanas | global | Gratis (login) |
-| **TMB-S3** | Dataset + código listo | HF `links-ads/tmb-s3` | 300 m | diario | — | Europa | Gratis (CC BY 4.0 / MIT) |
+| **MCD64A1** | **Supervisor** del preentrenamiento | `MODIS/061/MCD64A1` | 500 m | mensual | ~6 semanas | global | Gratis (login) |
+| **FireCCI51** | Supervisor de preentrenamiento a 250 m | `ESA/CCI/FireCCI/5_1` | 250 m | mensual | ~6 semanas | global | Gratis |
+| **FireCCI S3.1.1** | **Tercera opinión** / ablación (300 m, Sentinel-3) | CEDA `10.5285/d441079fc...` | 300 m | mensual | ~6 semanas | global | Gratis |
+| **TMB-S3** | **Generador de cicatriz** (congelado) + código listo | HF `links-ads/tmb-s3` | 300 m | diario | — | Europa | Gratis (CC BY 4.0 / MIT) |
 | **WildFireSpread** | Dataset + modelos listos | HF + Kaggle | 1 km | diario | — | Mediterráneo | Gratis |
 | **Mesogeos** | Cubo de drivers | Zenodo `10.5281/zenodo.7473331` | 1 km | diario | — | Mediterráneo | Gratis |
 | **WildfireSpreadTS** | Benchmark | NeurIPS 2023 D&B | 375 m | diario | — | US | Gratis |
@@ -403,7 +405,12 @@ Aunque se publica como producto mensual, el payload es **día de quema por píxe
    etiquetas de CEMS que vienen de imagen comercial (riesgo R2).
 2. **Permite deriva una curva de crecimiento diaria a 500 m, global, desde 2000.** Es el
    dataset de preentrenamiento natural: millones de transiciones para aprender la física
-   de la propagación, y luego afinar con las 96 series de CEMS.
+   de la propagación, y luego afinar con las 46 series limpias de CEMS.
+
+**Su papel en este proyecto: supervisor del preentrenamiento, nunca entrada.** Es
+precisamente por tener ~6 semanas de retraso por lo que es un buen supervisor: **no puede
+filtrar información que en producción no tendrías**. Pero por la misma razón **no puede
+entrar en el modelo como canal de entrada** (`research.md` §5.7).
 
 **Trampas:**
 
@@ -412,7 +419,13 @@ Aunque se publica como producto mensual, el payload es **día de quema por píxe
   es homogénea**: no mezclar años sin marcar el dominio.
 - Latencia de ~6 semanas tras el cierre del mes. Sirve para entrenar, no para predecir en vivo.
 - El "día de quema" es el día en que el algoritmo **detectó** el cambio, no el día en que
-  ardió. La capa `Uncertainty` cuantifica ese ruido.
+  ardió. La capa `Uncertainty` cuantifica ese ruido. Es un desfase de R19: hay que medirlo
+  contra `observed_time` de CEMS sobre nuestros eventos antes de fiarse del preentrenamiento.
+- **Fin de vida de MODIS: el reloj se acorta.** Suomi NPP cesa sus datos el **2026-11-01** y
+  Terra/MODIS tiene la fecha de apagado anunciada. El sucesor es **VNP64A1** (NOAA), a
+  **500 m** (no 375 m), desde marzo de 2012, con peor exactitud temporal que MCD64A1
+  (38% de detección el mismo día frente a 46%). **MCD64A1 tiene años contados**: el
+  preentrenamiento a largo plazo debería pensar en VNP64A1 o en la combinación de ambos.
 
 ---
 
@@ -448,6 +461,19 @@ residual** ("nearby events from the same geographic cluster can fall in differen
 3. **El dataset no trae las geometrías multi-ronda**, solo el perímetro final → hay que
    reingerir CEMS para las etiquetas de crecimiento.
 
+**Su papel en este proyecto: generador de cicatriz congelado.** Es la pieza que produce el
+canal `scar` de la entrada en las tres fases (preentrenamiento, ajuste e inferencia). Por
+eso sus sesgos se heredan, y por eso hay que medirlos sobre nuestras propias series
+(`research.md` §6.4).
+
+**La auditoría de splits (paso 0, bloqueante).** El dataset incluye un
+`manifest.parquet` con las columnas `split` (`train`/`val`/`test`) y `bbox_id` con formato
+`EMSR168-1-0` (código de activación, índice de AOI, ronda). Cruzándolo con nuestros 96
+eventos mediterráneos se puede saber **qué incendios y qué geografía ya vio TMB-S3**, y por
+tanto construir un split en el que test y val contengan **solo eventos que TMB-S3 no ha
+visto** (`research.md` §9.4.1, R18). El mismo cruce sirve para excluir esos eventos del
+pool de preentrenamiento con MCD64A1 (R20).
+
 ### 5.2 WildFireSpread / Mesogeos
 
 | | |
@@ -481,6 +507,58 @@ regiones no vistas hay que re-separar por cluster geográfico.
 
 Ambos sirven como **referencia de métricas** contra las que comparar, y como fuente de
 código para el tratamiento de imbalance y el protocolo de evaluación.
+
+### 5.4 FireCCI — la alternativa con Sentinel-3 (y su trampa)
+
+FireCCI produce mapas globales de área quemada. Las dos versiones que interesan:
+
+| | **FireCCIS311** (Sentinel-3) | **FireCCI51** (MODIS) |
+|---|---|---|
+| Sensor de entrada | **Sentinel-3 OLCI + SLSTR (Synergy)** + VIIRS térmico | MODIS NIR + focos activos de Terra/Aqua |
+| Resolución | **300 m** (0,002777°) | **250 m** (0,00224573°) |
+| Periodo | **2019-2024** (ampliado en 2025-10) | 2001-2022 (en GEE, hasta 2020-12) |
+| Capas | **JD** (día juliano de la primera detección) · **CL** (confianza 0-100) · LC (cobertura C3S v2.1.1) | **JD** · **CL** · LC |
+| Acceso | CEDA, 75 GB, GeoTIFF mensuales, 6 tiles continentales, OPeNDAP · DOI `10.5285/d441079fc77f49fabeb41330612b252f` · **no está en GEE** | **GEE**: `ESA/CCI/FireCCI/5_1` · CEDA (57 GB) · DOI `10.5285/58f00d8814064b79a0c49662ad3af537` |
+| Licencia | Open access, cualquier uso | Open access, cualquier uso |
+
+**Qué aporta cada una:**
+
+- **FireCCI51** es MCD64A1 a **250 m** en vez de 500 m, con **etiqueta blanda** (la capa CL
+  es la probabilidad de que el píxel esté realmente quemado). Bueno como supervisor de
+  preentrenamiento. Se queda en 2020-2022, así que no cubre la parte reciente.
+- **FireCCIS311** tiene la **misma resolución y el mismo sensor** que la entrada del
+  modelo, y además capa de confianza. Sobre el papel es el mejor supervisor posible.
+
+**La trampa: la etiqueta es reconstruible desde la entrada.** FireCCIS311 se generó
+mirando la reflectancia de **OLCI**, que es exactamente lo que el modelo recibe. Un
+modelo entrenado contra FireCCIS311 puede limitarse a **replicar el clasificador de
+FireCCI** en vez de aprender física de propagación.
+
+> **Por eso FireCCIS311 no sustituye a CEMS como conjunto de evaluación** (`research.md`
+> §3.6, R21). CEMS lo dibujaron analistas mirando imagen comercial y Sentinel-2: es la
+> única fuente cuyo proceso **no pasa por las imágenes del modelo**.
+>
+> **Jerarquía de independencia de etiquetas:**
+>
+> | Fuente | ¿Generada con…? | ¿Recuperable desde OLCI? | Uso |
+> |---|---|---|---|
+> | **CEMS** | analistas, imagen comercial + S2 | **No** | **evaluación** |
+> | MCD64A1 / FireCCI51 | reflectancia **MODIS** | parcialmente | preentrenamiento |
+> | FireCCIS311 | reflectancia **OLCI** | **casi directamente** | ablación / tercera opinión |
+
+**El papel de FireCCIS311 en este proyecto:** (a) **tercera opinión** para contrastar las
+etiquetas de CEMS —el 80% viene de imagen comercial—, y (b) ablación de supervisor de
+preentrenamiento a 300 m.
+
+**Trampas comunes a las dos:**
+
+- La fecha de detección **no es la fecha de quemado**: con nubes puede ser varios días
+  posterior al final del fuego (R19). Igual que MCD64A1.
+- El quemado es **binario** ("se asume el píxel completo quemado"), no fraccional. La capa
+  CL sirve de peso, pero no de área fraccional.
+- El producto **se reinicia cada mes**: `JD` es el día dentro del mes. Para una serie
+  temporal hay que concatenar los meses, y un píxel quemado en junio y otra vez en julio
+  aparece como quemado en julio.
 
 ---
 
@@ -546,8 +624,15 @@ iteración es de decenas de MB.
 requiere que una autoridad autorizada lo active, y sus productos tardan de días a semanas.
 Es una fuente de **etiquetas** y de **ground truth**, nunca de entrada en tiempo real.
 
-De ahí la necesidad de la cabeza de delineación (ver `research.md` §6.3-6.4): la "cicatriz
-conocida" tiene que salir del propio modelo.
+De ahí la necesidad de un **generador de cicatriz propio** (ver `research.md` §6.3-6.4): la
+"cicatriz conocida" tiene que salir de un modelo, no de un analista. En este proyecto ese
+generador es **TMB-S3 congelado** (§5.1), que usa el mismo sensor, la misma resolución y
+las mismas etiquetas que CEMS.
+
+**Y una regla que no se puede violar:** MCD64A1 y CEMS **nunca** están en el camino de
+inferencia. MCD64A1 llega con ~6 semanas de retraso y CEMS requiere una activación de
+emergencia. Solo aparecen en el entrenamiento (MCD64A1 como supervisor del
+preentrenamiento, CEMS como etiqueta del ajuste y como métrica).
 
 ### 6.5 Cadencia y producto final
 
