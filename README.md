@@ -32,6 +32,7 @@ y con qué probabilidad.
 |---|---|
 | [`docs/research.md`](docs/research.md) | Estado del arte, por qué 300 m, diseño del dataset, riesgos, log de decisiones |
 | [`docs/data-sources.md`](docs/data-sources.md) | Catálogo de fuentes: dónde está cada dato, IDs exactos, endpoints, licencias |
+| [`docs/experiment-tracking.md`](docs/experiment-tracking.md) | Guía de TensorBoard compartido, checkpoints y sincronización NFS |
 
 ## Decisiones clave
 
