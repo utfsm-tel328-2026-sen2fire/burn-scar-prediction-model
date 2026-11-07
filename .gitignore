@@ -1,1 +1,15 @@
 .opencode/
+
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+
+# TensorBoard y Checkpoints locales
+runs/
+checkpoints/
+
+# Configuración local (rutas de montaje personales)
+.env
+.env.*
+!.env.example

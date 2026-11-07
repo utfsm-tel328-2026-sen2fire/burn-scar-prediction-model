@@ -1,0 +1,78 @@
+[project]
+name = "burn-scar-prediction-model"
+version = "0.1.0"
+description = "Predicción multi-horizonte del crecimiento de cicatrices de incendio forestal en el Mediterráneo"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "tensorboard>=2.18",
+]
+
+# Backends de aceleración, mutuamente excluyentes. Se elige uno al sincronizar:
+#   uv sync --extra cuda   (NVIDIA, CUDA 12.8, incluye Blackwell sm_120)
+#   uv sync --extra rocm   (AMD, ROCm 6.4)
+#   uv sync --extra cpu
+[project.optional-dependencies]
+cuda = ["torch>=2.7", "torchvision>=0.22"]
+rocm = ["torch>=2.7", "torchvision>=0.22", "pytorch-triton-rocm; sys_platform == 'linux'"]
+cpu = ["torch>=2.7", "torchvision>=0.22"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "cuda" },
+        { extra = "rocm" },
+    ],
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.4"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", extra = "cuda", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-rocm", extra = "rocm", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cpu", extra = "cpu" },
+]
+torchvision = [
+    { index = "pytorch-cu128", extra = "cuda", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-rocm", extra = "rocm", marker = "sys_platform == 'linux'" },
+    { index = "pytorch-cpu", extra = "cpu" },
+]
+
+# Dependencia transitiva de torch+rocm, publicada solo en el índice de PyTorch.
+pytorch-triton-rocm = [
+    { index = "pytorch-rocm", extra = "rocm", marker = "sys_platform == 'linux'" },
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
