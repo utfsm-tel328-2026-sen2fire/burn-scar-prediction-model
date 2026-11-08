@@ -35,21 +35,24 @@ qué probabilidad.
 | | Decisión | Por qué |
 |---|---|---|
 | 1 | **La cicatriz la pone TMB-S3, congelado** | CEMS no existe en operación; con un modelo, la cicatriz se genera igual al entrenar y al predecir |
-| 2 | **Se audita qué sabe TMB-S3** | Se sabe de memoria 50 de nuestros 96 incendios: esas series quedan fuera del dataset |
+| 2 | **Se audita qué sabe TMB-S3** | Se sabe de memoria 50 de nuestras 96 series: esas series quedan fuera del dataset |
 | 3 | **El objetivo se mide desde la última imagen** | Medir desde la ronda anterior contaría quemado que ya se ve en la imagen |
 | 4 | **Validación cruzada en 5 bloques** | Con 46 series, un reparto fijo evaluaría 9 y desperdiciaría 37 |
 | 5 | **La resolución es 300 m** | Es la banda útil: a más resolución no hay imágenes tan frecuentes |
 | 6 | **Se evalúa siempre contra CEMS** | Es el único etiquetado hecho por analistas mirando otras imágenes |
 
 El detalle completo, con las alternativas descartadas y el porqué, está en
-[`docs/decisiones.md`](docs/decisiones.md).
+[`docs/decisiones.md`](docs/decisiones.md). Estas seis son el resumen de **B1-B13**
+(`decisiones.md` §1.1) y **D1-D18** (`dataset.md` §7).
 
 ## Estado
 
-**Fase de diseño.** El dataset está diseñado y medido, y la auditoría de splits ya está
-hecha. No hay implementación del modelo todavía: lo que hay es el entorno y las utilidades
-de experimento. Falta decidir siete cosas antes de descargar imagen
-([`docs/decisiones.md`](docs/decisiones.md) §1.3) y después construir la ingesta.
+**Diseño cerrado, implementación pendiente.** El dataset está diseñado y medido, y la
+auditoría de splits (PASO 0) ya está hecha. No hay implementación del modelo todavía: lo que
+hay es el entorno y las utilidades de experimento. Antes de descargar imagen hay que decidir
+siete cosas ([`docs/decisiones.md`](docs/decisiones.md) §1.3) y, en paralelo, una que
+bloquea la evaluación pero no la descarga: **P2, la definición precisa de B2**
+([`docs/decisiones.md`](docs/decisiones.md) §1.2).
 
 ## Documentación
 

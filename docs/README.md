@@ -1,6 +1,6 @@
 # Índice de la documentación
 
-> **Estado: Fase B completada.** La documentación está reorganizada: cada documento tiene
+> **Estado: el diseño está cerrado; la implementación, no.** Cada documento tiene
 > una audiencia y un trabajo, y **cada dato vive en un solo fichero**.
 >
 > **En una frase:** qué se ha decidido, qué hay que construir, qué necesita el modelo en
@@ -65,20 +65,3 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
    escribe con el fichero (`dataset.md §7`); dentro del mismo documento, basta `§7`.
 4. **Actualizar las referencias con el contenido.** Si una sección cambia de sitio, hay que
    buscar quién la citaba (`grep -rn "§X"`).
-
-## Mapa de la migración (research.md → documentos actuales)
-
-| Antes (`research.md`) | Ahora |
-|---|---|
-| §1 Resumen ejecutivo | `investigacion.md` §1 |
-| §2 Glosario | `dataset.md` §1 |
-| §3 Estado del arte | `investigacion.md` §2 |
-| §4 Por qué 300 m | `investigacion.md` §3 |
-| §5 Diseño del dataset | `dataset.md` §2-§8 |
-| §6 Qué necesita el modelo en inferencia | `operacion.md` §1-§7 |
-| §7 Riesgos y trampas | `decisiones.md` §2 |
-| §8 Log de decisiones | `decisiones.md` §1.4 |
-| §8 Baselines y protocolo | `dataset.md` §9-§10 |
-| §9 Preguntas abiertas y siguientes pasos | `decisiones.md` §3-§7 |
-| §10 Cómo verificar los números | `investigacion.md` §4 |
-| §11 Decisiones tomadas y pendientes | `decisiones.md` §1.1-§1.3 |

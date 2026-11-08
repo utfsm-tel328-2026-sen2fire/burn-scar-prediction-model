@@ -12,7 +12,7 @@
 | Entrada | Fuente | Latencia (adquisición → disponible) | Revisita sobre el AOI | **Edad del dato más reciente** |
 |---|---|---|---|---|
 | Imagen multiespectral | Sentinel-3 OLCI **NRT** L1 | **< 3 h** | ~2 d (~3 d con nubes) | **0-2 días (media ~1 día)** |
-| Radar | Sentinel-1 GRD NRT | ~1 h | ~6 d | **0-6 días (media ~3 días)** |
+| Radar | Sentinel-1 GRD NRT (**v2**) | ~1 h | ~6 d | **0-6 días (media ~3 días)** |
 | Línea base pre-fuego | Sentinel-2 SR (compuesto) | ~3 h | 5 d | días o semanas antes del fuego |
 | Meteo observada | GFAS | ~12 h | 6-12 h | **~12 h** |
 | Meteo observada | ERA5-Land-**T** | 5 d | horario | ~5 d |
@@ -85,7 +85,7 @@ un **train/test shift** silencioso. Cuatro salidas:
 
 ```
    Sentinel-3  (OLCI, 300 m, ~2 dias)
-   Sentinel-1  (GRD, radar, ~6 dias)
+   Sentinel-1  (GRD, radar, ~6 dias) - v2, fuera de la v1 (BL5)
    Sentinel-2  (linea base pre-incendio, 20 m)
    ERA5 / GFS  (viento, temperatura, humedad)
    DEM / WorldCover  (topografia, combustible)
@@ -129,32 +129,22 @@ ella el preentrenamiento con MCD64A1 como regularizador de esa cabeza. Se gana: 
 proyecto mucho más acotado, y una cicatriz de calidad **medible y citable** (el F1 de
 TMB-S3 medido sobre el propio test set es una figura del informe).
 
-### El problema serio: TMB-S3 se sabe de memoria 50 de nuestros incendios
+### El problema serio: TMB-S3 se sabe de memoria 50 de nuestras series
 
-La auditoría (decisiones.md §3) encontró que **62 de las 96 series mediterráneas están en TMB-S3**,
-y 50 de ellas en su `train`/`val` (los pesos las aprendieron; 12 están en su `test` y sus
-pesos no las vieron).
+La auditoría (decisiones.md §3) encontró que **62 de las 96 series mediterráneas están en
+TMB-S3**, y 50 de ellas en su `train`/`val`: sus pesos las aprendieron. En esas 50 series la
+cicatriz de entrada **no es una estimación, es el perímetro CEMS memorizado**, así que el
+target `polígono(r+1) − scar(f)` mide "crecimiento entre rondas" en lugar de "crecimiento
+después de *f*". En las 46 restantes el target significa lo mismo en train y en test.
 
-Esto **no** significa que la respuesta esté en la entrada. Significa algo peor y más
-sutil: **la cicatriz de entrada cambia de significado**.
-
-| Serie | Qué es `scar_TMB3(f)` | Qué mide el target `polígono(r+1) − scar(f)` |
-|---|---|---|
-| **Memorizada** (50) | el perímetro CEMS de la ronda *r*, reconstruido casi exacto | crecimiento **entre rondas** |
-| **No memorizada** (46) | una **estimación** con F1 ≈ 66 | crecimiento **después de *f*** |
-
-Entrenar con las dos a la vez es darle al modelo **la misma pregunta con dos respuestas
-distintas**. La analogía: en 50 ejemplos le das un mapa perfecto del charco y en 46 un
-croquis a pulso; luego lo examinas con croquis. Aprende "el mapa siempre es perfecto" y
-en el examen real falla, no porque no sepa propagar sino porque los ejemplos no se
-parecían al examen.
+Entrenar con las dos a la vez sería darle al modelo **la misma pregunta con dos respuestas
+distintas**: en 50 ejemplos el mapa perfecto del charco y en 46 un croquis, examinado con
+croquis.
 
 → **Se excluyen las 50 series memorizadas del dataset (D13).** Quedan 46, y en ellas la
-cicatriz es siempre una estimación: train y test hacen la misma pregunta.
-
-> **Corolario: rehacer el split por año no lo arregla.** Da igual cómo repartamos
-> nuestras series: si el código está en el train de TMB-S3, TMB-S3 se lo sabe de memoria.
-> La única solución es **sacar el evento del dataset**, no recolocarlo.
+cicatriz es siempre una estimación: train y test hacen la misma pregunta. Las cifras, la
+tabla y el corolario ("rehacer el split por año no lo arregla") están en
+[`decisiones.md`](decisiones.md) §3.
 
 **La cicatriz de TMB-S3 tiene un sesgo conocido**: sus etiquetas usan la regla OR, que
 infla el área un 34%. Como el target se define respecto a `scar_TMB3(f)` (dataset.md §2, D9), ese
@@ -182,7 +172,7 @@ un experimento barato y no toca el resto de la cadena de procesamiento.
   T+0 h    Detección de hotspot (FIRMS / VIIRS / GOES)
            -> se abre un "evento"
   T+3 h    Llega OLCI NRT
-           Descarga: OLCI, S1, ERA5/GFAS, GFS forecast, DEM, WorldCover
+           Descarga: OLCI, ERA5/GFAS, GFS forecast, DEM, WorldCover (+ S1 en la v2)
   T+3,5 h  TMB-S3 -> cicatriz actual (congelado)
            Modelo -> mapa de probabilidad de quemado a h (1, 3, 7 días)
   T+2-3 d  Llega el siguiente OLCI -> se repite
@@ -201,7 +191,9 @@ un experimento barato y no toca el resto de la cadena de procesamiento.
 | GFAS / GFS | Descarga directa desde NASA / NOAA, sin cuenta de Earthdata para GFAS |
 | Almacenamiento | Nada: solo se descargan las ventanas del AOI, no los archivos completos |
 | Monitorización | Hay que vigilar la latencia real de NRT (§1), no asumirla |
-| CEMS | Solo para etiquetas. **Nunca en el camino de inferencia** |
+
+El detalle de cuentas por fuente está en [`datos.md`](datos.md) §6.1. CEMS, como cualquier
+otra fuente de etiquetas, **nunca está en el camino de inferencia** (datos.md §6.4).
 
 ## 7. Qué cambia en el diseño por todo esto
 
@@ -220,10 +212,3 @@ un experimento barato y no toca el resto de la cadena de procesamiento.
 | **La evaluación es siempre contra CEMS** | CEMS lo dibujaron analistas con otras imágenes; con FireCCI S3.1.1 el modelo podría replicar su clasificador en vez de aprender física (investigacion.md §2, R21) |
 | **La entrada de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
 | **FIRMS/VIIRS como canal adicional** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
-
----
-
-## 8. Acceso en tiempo real
-
-Los requisitos de cuenta por fuente, el régimen NRT/NTC y qué se descarga en cada iteración
-están en [`datos.md`](datos.md) operacion.md.

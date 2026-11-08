@@ -25,7 +25,7 @@ son siglas o nombres en inglés.
 | **NBR** | `(NIR − SWIR) / (NIR + SWIR)`. El índice clásico de quemado |
 | **dNBR** | Diferencia de NBR antes y después del fuego. Da la **severidad** |
 | **TOA** | *Top-of-atmosphere*. Reflectancia/radiancia medida en el sensor, sin corregir a superficie |
-| **Regla OR** | Se marca un píxel como quemado si **cualquier** píxel de 10 m dentro lo está. Inflat el área |
+| **Regla OR** | Se marca un píxel como quemado si **cualquier** píxel de 10 m dentro lo está. Infla el área |
 | **Target (objetivo)** | Lo que hay que acertar: el mapa de probabilidad de quema en el horizonte pedido |
 | **Baseline (modelo de referencia)** | B0, B1 y B2: modelos sin aprendizaje automático contra los que se compara el nuestro |
 | **Ground truth (GT)** | La "verdad" contra la que se mide el modelo |
@@ -188,13 +188,11 @@ excluyen o se tratan aparte.
 | Productos CEMS (serie, producto) | 551 (= 455 DEL + 96 FEP) |
 | Distribución de rondas por serie | 2→33, 3→25, 4→8, 5→6, 6→2, 7→5, 8→1, 9→6, 10→1, 11→4, 13→1, 16→1, 17→1, 18→1, 25→1 |
 
-> **Nota sobre el conteo de "frames".** Este censo cuenta **productos CEMS**, no frames OLCI:
-> el total (551) son 455 delineaciones + 96 FEP, y por eso la mediana de *rondas* es 3 y la de
-> *productos* 4 (media 4,74 vs 5,74), con el FEP como +1 por serie. **El FEP se excluye de la
-> serie de etiquetas** (D5, §7): es una estimación de baja resolución y meterla metería
-> un borde grueso. Excluido el FEP, la mediana de rondas por serie es 3.
-> El número de frames OLCI por AOI (el eje T del dataset, §2) es otro dato y está sin medir
-> (P7).
+> **Nota.** Este censo cuenta **productos CEMS**, no frames OLCI: el total (551) son 455
+> delineaciones + 96 FEP, por eso la mediana de *rondas* es 3 y la de *productos* 4 (media
+> 4,74 vs 5,74). **El FEP se excluye de la serie de etiquetas** (D5, §7): es una estimación
+> de baja resolución y meterla metería un borde grueso. El nº de frames OLCI por AOI (el eje
+> T, §2) es otro dato y está sin medir (P7).
 
 Añadiendo el periodo pre-2023 (2012-2022, accesible por otra vía, decisiones.md §2 R1) el total
 mediterráneo sube a **~162 series y ~490 transiciones**. ⚠️ Con la auditoría de splits

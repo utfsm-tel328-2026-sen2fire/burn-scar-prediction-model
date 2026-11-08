@@ -28,7 +28,7 @@ Por eso el modelo usa **imágenes abiertas + variables meteorológicas y de terr
 | | |
 |---|---|
 | Etiquetas | CEMS EMSR: delineaciones de quemado fechadas por ronda de monitorización |
-| Entrada | Sentinel-3 OLCI (revisita ~2 días) + Sentinel-1 (radar, ~6 días) + Sentinel-2 (línea base pre-incendio) + ERA5 + GFS + DEM + WorldCover |
+| Entrada | Sentinel-3 OLCI (revisita ~2 días) + Sentinel-1 (radar, ~6 días, **v2**) + Sentinel-2 (línea base pre-incendio) + ERA5 + GFS + DEM + WorldCover |
 | Salida | Probabilidad de quema por píxel a horizonte variable |
 | Resolución | 300 m |
 | Región | Mediterráneo / UE |
@@ -307,7 +307,8 @@ cuello de botella.
 
 ## 4. Cómo verificar los números
 
-Todos los datos del dataset.md §3 y de §3 se obtuvieron de la API pública de CEMS el 2026-11-06.
+Todos los datos del censo ([`dataset.md`](dataset.md) §3) y de los incrementos por ronda
+(§3.3) se obtuvieron de la API pública de CEMS el 2026-11-06.
 Re-verificado el **2026-11-08**: 268 activaciones en total (2023: 55, 2024: 69, 2025: 69,
 2026: 75), 131 de incendio y 107 mediterráneas con la lista de 14 países de dataset.md §3 — sin
 cambios. El método, para poder repetirse:
@@ -395,9 +396,3 @@ for row in rows:
   La clasificación por código (62/96) **no depende** de este error.
 - Se comprobó que **ningún código aparece en más de un split** de TMB-S3: la asignación
   es consistente a nivel de activación, no de caja.
-
----
-
-## 5. Referencias
-
-Artículos, repos y documentación de producto: [`datos.md`](datos.md) §8.

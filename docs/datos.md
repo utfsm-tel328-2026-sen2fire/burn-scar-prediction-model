@@ -72,20 +72,9 @@ while url:
 detail = requests.get(f"{API}/public-activations/?code=EMSR922").json()["results"][0]
 ```
 
-**Censo medido (2026-11-06):**
-
-| | |
-|---|---|
-| Activaciones en la API | 268 (2023: 55, 2024: 69, 2025: 69, 2026: 75) |
-| De ellas, incendio | **131** |
-| De ellas, incendio y mediterráneas | **107** (14 países) |
-| Productos de delineación (Med) | 489 |
-| Series con ≥1 delineación | 130 |
-| Series con ≥2 delineaciones | **96** |
-| Transiciones de crecimiento | **359** |
-
-> Re-verificado el 2026-11-08 contra la API: 268 activaciones (2023: 55, 2024: 69, 2025: 69,
-> 2026: 75), 131 de incendio, 107 mediterráneas (14 países). Sin cambios.
+**Censo medido:** el número de activaciones, series y transiciones, con la fecha de obtención
+y de re-verificación, está en [`dataset.md`](dataset.md) §3; el método para repetirlo, en
+[`investigacion.md`](investigacion.md) §4.
 
 **Límite duro:** el endpoint de detalle **devuelve 403 para todo código anterior a
 EMSR656** (23/03/2023). Verificado con EMSR001, 100, 200, 300, 400, 450, 500, 550, 600,
@@ -265,6 +254,10 @@ tipada (mypy strict), `httpx` como única dependencia, extras opcionales `[geo]`
 | Producto | **OLCI EFR, radiancia *top-of-atmosphere*** (no reflectancia de superficie) |
 | Bandas | Oa01 (400 nm) … Oa21 (1020 nm) |
 
+> ⚠️ **TODO unificar.** La cobertura de la colección en GEE (2016-10-18) no coincide con la
+> fecha del primer OLCI de S3A que se cita en `investigacion.md` §3.2bis (abril 2016).
+> Es lo que fija el límite inferior de la ventana temporal (BL1, BL3).
+
 **Dos trampas importantes:**
 
 1. **No hay SWIR.** Las 21 bandas cubren 400-1029 nm: visible + NIR. **No se puede calcular
@@ -323,13 +316,12 @@ notablemente tras un incendio.
 
 ### 3.4 Por qué no VIIRS (y cuándo recuperarlo)
 
-VIIRS (Suomi-NPP, NOAA-20, NOAA-21) ofrece bandas de imagen a 375 m con un periodo de 12 h, y es
-la mejor cadencia posible en datos abiertos: **8-16 observaciones por incendio** frente a
-las 2-3 de Sentinel-3.
-
-Descartado en la v1 porque **no está en GEE**: obliga a descargar swath L1B de LAADS
-(`VNP02IMG`/`VNP03IMG`) y a reproyectarlos. Es la primera opción a recuperar si la
-cadencia, y no la resolución, resulta ser el cuello de botella.
+VIIRS (Suomi-NPP, NOAA-20, NOAA-21) ofrece bandas de imagen a 375 m con un periodo de 12 h: es
+la mejor cadencia posible en datos abiertos (**8-16 observaciones por incendio** frente a
+las 2-3 de Sentinel-3), pero **no está en GEE**: obliga a descargar swath L1B de LAADS
+(`VNP02IMG`/`VNP03IMG`) y a reproyectarlos. Es la primera opción a recuperar si la cadencia,
+y no la resolución, resulta ser el cuello de botella. El resto de alternativas de
+resolución está en [`investigacion.md`](investigacion.md) §3.4.
 
 ---
 
@@ -370,9 +362,12 @@ específica, precipitación.
 > en un incendio de 20 km de extensión. Usar las celdas-grid más próximas al centroide
 > del AOI, no un promedio de toda la escena.
 
-**Alternativa sin registro:** NASA **GFAS** (Global Fire Assimilation System) en
-LAADS, diario y sin cuenta. Fuente de la doble verificación meteorológica y la opción
-near-real-time sin clave de CDS.
+**Alternativa:** NASA **GFAS** (Global Fire Assimilation System) en LAADS. Fuente de la doble
+verificación meteorológica y la opción near-real-time sin clave de CDS.
+
+> ⚠️ **TODO unificar.** Aquí se describía como "sin cuenta" y "diario", pero §1 da cadencia
+> 6-12 h y §6.1 la registra como **obligatoria**. Decidir antes de fijar la ingesta
+> (BL1-BL3).
 
 ### 4.2 Copernicus DEM — topografía
 
@@ -413,6 +408,9 @@ Aunque se publica como producto mensual, el payload es **día de quema por píxe
 2. **Permite deriva una curva de crecimiento diaria a 500 m, global, desde 2000.** Es el
    dataset de preentrenamiento natural: millones de transiciones para aprender la física
    de la propagación, y luego afinar con las 46 series limpias de CEMS.
+
+> ⚠️ **TODO unificar.** El "82 %" del punto 1 es el único sitio que no dice 80 % (390 de 489
+> delineaciones, R2 e `investigacion.md` §2.4). Comprobar y dejar un único valor.
 
 **Su papel en este proyecto: supervisor del preentrenamiento, nunca entrada.** Es
 precisamente por tener ~6 semanas de retraso por lo que es un buen supervisor: **no puede
@@ -546,13 +544,8 @@ FireCCI** en vez de aprender física de propagación.
 > y Sentinel-2 (18 %): es la única fuente cuyo proceso **no pasa por las imágenes del modelo
 > en el frente** — el Sentinel-2 que usa el modelo es solo línea base pre-incendio.
 >
-> **Jerarquía de independencia de etiquetas:**
->
-> | Fuente | ¿Generada con…? | ¿Recuperable desde OLCI? | Uso |
-> |---|---|---|---|
-> | **CEMS** | analistas, imagen comercial + S2 | **No** (el S2 del modelo es solo línea base pre-incendio) | **evaluación** |
-> | MCD64A1 / FireCCI51 | reflectancia **MODIS** | parcialmente | preentrenamiento |
-> | FireCCIS311 | reflectancia **OLCI** | **casi directamente** | ablación / tercera opinión |
+> La **jerarquía de independencia de etiquetas** completa (qué fuente sirve para qué) está
+> en [`investigacion.md`](investigacion.md) §2.6.
 
 **El papel de FireCCIS311 en este proyecto:** (a) **tercera opinión** para contrastar las
 etiquetas de CEMS —el 80% viene de imagen comercial—, y (b) ablación de supervisor de
@@ -616,7 +609,7 @@ En cada ciclo del evento (cada ~2-3 días, operacion.md §5):
 
 ```
   Sentinel-3 OLCI  ->  ventana temporal sobre el AOI, 5 bandas
-  Sentinel-1 GRD   ->  ventana temporal sobre el AOI, VV + VH
+  Sentinel-1 GRD   ->  ventana temporal sobre el AOI, VV + VH   (v2, fuera de la v1: BL5)
   Sentinel-2 SR    ->  1-2 frames pre-incendio (composición en memoria)
   ERA5 / GFAS      ->  u, v, T, humedad, precipitación (diario)
   GFS / ECMWF HRES ->  viento y humedad PREVISTOS a 24-72 h
@@ -678,7 +671,7 @@ Los productos de terceros (WorldCover, DEM, etc.) tienen su propia licencia.
 > Copernicus Climate Change Service (C3S) / ERA5: © Copernicus Climate Change Service
 > (C3S) / ECMWF. Licensed under the **Copernicus licence**.
 
-Requiere registro en el CDS (gratuto) para acceso programático.
+Requiere registro en el CDS (gratuito) para acceso programático.
 
 ### 7.5 ESA WorldCover
 
@@ -707,7 +700,7 @@ Requiere registro en el CDS (gratuto) para acceso programático.
 
 > **Nota práctica:** la licencia de **ERA5** (Copernicus) es la única con cláusula de uso
 > no comercial explícita. Para un proyecto universitario es suficiente, pero conviene
-> revisarlo si el trabajo se difunde fuera del ámbito académico o se wanna publicar
+> revisarlo si el trabajo se difunde fuera del ámbito académico o se van a publicar
 > resultados derivados.
 
 ---

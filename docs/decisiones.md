@@ -38,8 +38,8 @@
 | ~~**P1**~~ | ~~Ejecutar la auditoría de splits~~ | **Hecho.** 62/96 series en TMB-S3; 50 excluidas; quedan 46 | §3 |
 | **P2** | **Definir B2 (advección por viento) con precisión** | Es el criterio de aceptación: "el modelo supera la física sin ML". Sin definición no se puede evaluar | dataset.md §10, baselines |
 | **P3** | **Fijar el alcance de la entrega**: ¿se entrega M-A, M-B o los dos? | Determina el volumen de trabajo. Con la estructura M-A/M-B, la decisión se puede aplazar hasta ver los resultados | dataset.md §8, §5 |
-| **P4** | **Decidir si *h* se codifica posicionalmente** (embeddings por día) o como escalar normalizado | Cambia la arquitectura del encoder | §5 |
-| **P5** | **Medir el error de TMB-S3 contra CEMS** sobre las 46 series | Si el F1 es bajo (<80%), el margen de error del modelo se ensancha y hay que decidir si hacer fine-tune | operacion.md §4, §5 |
+| **P4** | **Decidir si *h* se codifica posicionalmente** (embeddings por día) o como escalar normalizado | Cambia la arquitectura del encoder | dataset.md §2, D10 |
+| **P5** | **Medir el error de TMB-S3 contra CEMS** sobre las 46 series | Si el F1 es bajo (<80%), el margen de error del modelo se ensancha y hay que decidir si hacer fine-tune | operacion.md §4; §5 |
 | **P6** | **Definir qué es "el siguiente OLCI"** en la cadena de procesamiento: la mejor pasada disponible frente a la de menor latencia | Afecta a la latencia del producto y a la reproducibilidad del dataset | operacion.md §1, operacion.md §5 |
 | **P7** | **Medir el nº real de muestras con la regla "una por frame OLCI"** (censo de frames OLCI por AOI, cruzados con las rondas CEMS) | Es el tamaño real del dataset y la cifra que aparecía en el README; se citaba 551, que es el nº de productos CEMS, no de frames | dataset.md §2, dataset.md §3 |
 
@@ -74,44 +74,31 @@ bloquea y cuál es la recomendación.
 Cada decisión, la alternativa descartada y el porqué. Es la sección que hace defendible
 el proyecto en una evaluación.
 
-| Decisión | Alternativa descartada | Motivo |
-|---|---|---|
-| Entrada con variables meteorológicas | Solo imágenes | Sin viento el modelo solo puede extrapolar espacialmente; falla cuando el viento cambia |
-| Salida multi-horizonte | Predecir solo el perímetro final | La etiqueta por ronda da señal mucho más densa; el perímetro final es un caso particular |
-| Región mediterránea | Global / EE.UU. | Global: etiquetas débiles para propagación (sin rondas). EE.UU.: ecosistema de benchmarks más rico pero régimen distinto y más fácil de replicar que de superar |
-| 300 m | 10 m / 30 m / 1 km / 375 m VIIRS | 10 m no tiene dinámica; 1 km es demasiado grueso; VIIRS exigiría procesar swaths L1B |
-| CEMS como fuente de etiquetas | MCD64A1 / FireCCI | CEMS es lo único que da una **serie temporal de la cicatriz**. MCD64A1 sí se usará, como contraste y preentrenamiento |
-| Etiquetado cuantificado | Binario (OR lógico) | El binario en el borde es ruido irreducible; la fracción lo convierte en información |
-| Horizonte variable | t+1d / t+3d / t+7d fijos | No existen etiquetas para horizontes fijos: las rondas son irregulares |
-| Predecir el incremento | Predecir el estado completo | La parte ya conocida domina la pérdida y no aporta señal |
-| Entradas: 5 bandas OLCI | 21 bandas | Demostrado que 5 igualan a 21 (TMB-S3); ×4 menos volumen |
-| GEE como motor de imagen | STAC + rasterio directo | GEE da imágenes, clima, terreno y cobertura con 5-15 líneas cada uno. Ahorra ~2 días |
-| `copernicus-ems` para CEMS | Cliente HTTP a mano | Ya resuelve activations, products, máscaras de observación, rasterización tri-estado y métricas enmascaradas |
-| Split por cluster geográfico | Split temporal por año (Mesogeos) o aleatorio | El split por año de Mesogeos mide generalización temporal, no espacial: un test de 2022 puede caer junto a un train de 2019. Con 96 eventos, el aleatorio filtra el mismo incendio entre train y test |
-| Baselines antes de la red | Ir directo a la arquitectura | Si no supera la advección por viento, no hay modelo |
-| **Modelo multi-tarea** (delineación + propagación) | Una sola cabeza de propagación, con la cicatriz de CEMS como entrada | CEMS no existe en operación; sin la cabeza de delineación hay train/test shift y el pipeline no es operacional (operacion.md §3). **Superado**: TMB-S3 congelado hace el papel de la cabeza de delineación sin entrenar una |
-| **Horizonte anclado en la última observación** | Anclar en `event_time` o en la ronda de CEMS | Se acreditaría tiempo en el que el fuego ya estaba quemando; el modelo aprendería horizontes que no tendrá en operación (operacion.md §2) |
-| **Meteo de pronóstico** (GFS/ECMWF) además del análisis (ERA5) | Solo ERA5-Land | El análisis describe el pasado; para anticipar el frente hace falta el viento futuro (operacion.md §7) |
-| **FIRMS/VIIRS como canal de entrada** | Omitirlo, por ser grueso y ruidoso | Es la señal más timely sobre dónde está el fuego ahora mismo; aporta el ancla en tiempo real |
-| **Una muestra por frame OLCI** | Una muestra por ronda CEMS / rejilla diaria | Reproduce la cadencia de operación (actualiza cada ~2-3 días) y hace que el arranque en frío aparezca solo (dataset.md §2). El nº de muestras con esta regla está sin medir (P7); lo que sí es inmediato es que 455 productos DEL ↔ 359 transiciones |
-| **Cicatriz de entrada causal** (`observed_time ≤ t_frame`) | Usar la última ronda, sea cuando sea | Una ronda posterior filtra quemado futuro al modelo y hace las métricas optimistas sin que se note (dataset.md §7 D1, R15). **Superado** por la decisión "TMB-S3 genera la cicatriz" |
-| **Sensor por ronda, evaluación estratificada** | Filtrar las transiciones con sensor distinto | Filtrar encoge un dataset que ya es pequeño; estratificar no pierde nada y el contraste es un resultado propio (§2 R14) |
-| **Entrenamiento en dos fases** (delineación → propagación) + ruido de corrupción | Solo cicatriz gold, o solo ruido aleatorio | Cierra el hueco entre la entrada perfecta del entrenamiento y la imperfecta de la operación (dataset.md §7, R17). **Superado** por "TMB-S3 genera la cicatriz": ya no hay dos fases, solo un modelo externo congelado + ruido |
-| **FEP excluido** de la serie de etiquetas | Incluirlo como una ronda más | Es una primera estimación de baja resolución: meterla mete un borde grueso en las etiquetas (dataset.md §7 D5) |
-| **Métrica principal por evento**, con agregadas como segundo resultado | Solo promedio por píxel | Con 46 series evaluadas, el promedio por píxel da demasiado peso a los AOIs grandes (dataset.md §10, protocolo de evaluación) |
-| **TMB-S3 congelado como generador de cicatriz** | Cabeza de delineación propia; cicatriz de MCD64A1; cicatriz de CEMS; autorregresión | Mismo sensor, resolución, bandas y etiquetas que CEMS; código MIT y checkpoints publicados; elimina el train/test shift porque el mecanismo es idéntico en las tres fases (dataset.md §8, operacion.md §4) |
-| **MCD64A1 solo como supervisor de preentrenamiento** | También como fuente de etiquetas de ajuste; como entrada del modelo | En operación no existe (6 semanas de retraso): como entrada rompería el pipeline. Como supervisor es ideal: millones de etiquetas baratas y 100% reproducible (dataset.md §8) |
-| **Target = `polígono(r+1) − scar_TMB3(f)`** | `polígono(r+1) − polígono(r)` | La alternativa cuenta quemado ya visible en la imagen (≈ la mitad del incremento típico con 3 días de separación CEMS y 2 de OLCI) y no coincide con la semántica del preentrenamiento (dataset.md §2, D9) |
-| **El horizonte *h* es una entrada explícita** | `h` implícito (solo el que toque a cada ronda); `h` fijo | Sin *h* no se puede derivar el perímetro final "agregando horizontes" ni comparar limpiamente con el baseline B2. CEMS no puede enseñar horizontes: sus rondas son irregulares (dataset.md §2, D10) |
-| **Rejilla de horizontes `{1,2,3,5,7,10,14}` días en preentrenamiento** | Muestrear `h` de la distribución empírica de CEMS | Una rejilla fija da cobertura(systemática) de los horizontes, y el modelo aprende a responder a cualquier *h*. Con CEMS sola el modelo solo conoce los horizontes que el analista eligió (dataset.md §2) |
-| **Preentrenamiento sin eventos que solapen test/val** | Preentrenar con todo MCD64A1 | MCD64A1 cubre el Mediterráneo de forma exhaustiva: casi todos los incendios de test estarían dentro. Sin la exclusión, la afirmación de generalización espacial no es verificable (§2 R20, D11) |
-| **Etiquetas de preentrenamiento reescaladas con *nearest*** | Reescalado bilineal; modelo a 500 m | La arquitectura y la resolución se mantienen a 300 m en las tres fases. *Nearest* no inventa quemado donde no lo hay; el ajuste con CEMS a 300 m fraccional recalibra el bloque tosco de 500 m (dataset.md §7 D12) |
-| **Preentrenamiento mediterráneo primero** | Global; o empezar por otra región | La física se transfiere entre regímenes parecidos. Además, el cuello de botella real es la descarga de OLCI, no la CPU (dataset.md §8) |
-| **Excluir las 50 series que TMB-S3 se sabe de memoria** | Dejarlas y re-split por año; o el criterio de 150 km | En ellas la cicatriz de entrada es el perímetro CEMS memorizado y el target significa "crecimiento entre rondas" en vez de "después de *f*". El criterio de 150 km deja 2 series: inviable. Medido en §3 |
-| **Validación cruzada agrupada (5 folds)** en vez de split fijo | Reparto 60/20/20 sobre las 46 | El reparto fijo evalúa 9 series y desperdicia 37. La CV evalúa las 46, cada una una vez, y el bootstrap se hace sobre 46 eventos (dataset.md §5) |
-| **Excluir los 96 eventos de CEMS del pool de MCD64A1** | Excluir solo los de test y val | Con CV, el pool cambiaría en cada fold. Excluir los 96 de una vez lo hace trivialmente correcto y cuesta nada (dataset.md §7 D15) |
-| **CEMS como único conjunto de evaluación** | FireCCI S3.1.1 (300 m, Sentinel-3) o MCD64A1 | FireCCI S3.1.1 se generó mirando OLCI: el modelo podría replicar su clasificador en vez de aprender física. CEMS lo dibujaron analistas con otras imágenes (investigacion.md §2, R21) |
-| **Dos etapas encadenadas, ambas evaluables (M-A y M-B)** | Solo ajuste CEMS; o solo preentrenamiento | El ajuste sobre un preentrenamiento es una inicialización, así que se pueden reportar los dos modelos. Convierte el conjunto pequeño de CEMS en el diseño del experimento y da salida de emergencia si falta tiempo (dataset.md §8) |
+Esta tabla recoge las alternativas descartadas **que no están ya recogidas** en la decisión o
+en la regla que las asume. La columna «Dónde» apunta a esa decisión o regla; el motivo de
+cada una está allí (§1.1, [`dataset.md`](dataset.md) §7, `operacion.md` §3-4), así que aquí
+no se repite.
+
+| Decisión | Alternativa descartada | Motivo | Dónde |
+|---|---|---|---|
+| Entrada con variables meteorológicas | Solo imágenes | Sin viento el modelo solo puede extrapolar espacialmente; falla cuando el viento cambia | operacion.md §1 |
+| Salida multi-horizonte | Predecir solo el perímetro final | La etiqueta por ronda da señal mucho más densa; el perímetro final es un caso particular | dataset.md §2 |
+| Región mediterránea | Global / EE.UU. | Global: etiquetas débiles para propagación (sin rondas). EE.UU.: ecosistema de benchmarks más rico pero régimen distinto y más fácil de replicar que de superar | BL3, BL6 |
+| 300 m | 10 m / 30 m / 1 km / 375 m VIIRS | 10 m no tiene dinámica; 1 km es demasiado grueso; VIIRS exigiría procesar swaths L1B | investigacion.md §3 |
+| CEMS como fuente de etiquetas | MCD64A1 / FireCCI | CEMS es lo único que da una **serie temporal de la cicatriz**. MCD64A1 sí se usará, como contraste y preentrenamiento | B4, B11 |
+| Etiquetado cuantificado | Binario (OR lógico) | El binario en el borde es ruido irreducible; la fracción lo convierte en información | D2 |
+| Horizonte variable | t+1d / t+3d / t+7d fijos | No existen etiquetas para horizontes fijos: las rondas son irregulares | B7 |
+| Entradas: 5 bandas OLCI | 21 bandas | Demostrado que 5 igualan a 21 (TMB-S3); ×4 menos volumen | BL2 |
+| GEE como motor de imagen | STAC + rasterio directo | GEE da imágenes, clima, terreno y cobertura con 5-15 líneas cada uno. Ahorra ~2 días | operacion.md §6 |
+| `copernicus-ems` para CEMS | Cliente HTTP a mano | Ya resuelve activations, products, máscaras de observación, rasterización tri-estado y métricas enmascaradas | datos.md §2.7 |
+| Split por cluster geográfico | Split temporal por año (Mesogeos) o aleatorio | El split por año de Mesogeos mide generalización temporal, no espacial: un test de 2022 puede caer junto a un train de 2019. Con 96 eventos, el aleatorio filtra el mismo incendio entre train y test | B9, D8 |
+| Baselines antes de la red | Ir directo a la arquitectura | Si no supera la advección por viento, no hay modelo | dataset.md §9 |
+| Horizonte anclado en la última observación | Anclar en `event_time` o en la ronda de CEMS | Se acreditaría tiempo en el que el fuego ya estaba quemando; el modelo aprendería horizontes que no tendrá en operación | operacion.md §2 |
+| Meteo de pronóstico (GFS/ECMWF) además del análisis (ERA5) | Solo ERA5-Land | El análisis describe el pasado; para anticipar el frente hace falta el viento futuro | operacion.md §7 |
+| FIRMS/VIIRS como canal de entrada | Omitirlo, por ser grueso y ruidoso | Es la señal más timely sobre dónde está el fuego ahora mismo; aporta el ancla en tiempo real | BL5 |
+| Una muestra por frame OLCI | Una muestra por ronda CEMS / rejilla diaria | Reproduce la cadencia de operación (actualiza cada ~2-3 días) y hace que el arranque en frío aparezca solo. El nº de muestras con esta regla está sin medir (P7); lo que sí es inmediato es que 455 productos DEL ↔ 359 transiciones | dataset.md §2 |
+| Sensor por ronda, evaluación estratificada | Filtrar las transiciones con sensor distinto | Filtrar encoge un dataset que ya es pequeño; estratificar no pierde nada y el contraste es un resultado propio | D4, R14 |
+| Métrica principal por evento, con agregadas como segundo resultado | Solo promedio por píxel | Con 46 series evaluadas, el promedio por píxel da demasiado peso a los AOIs grandes | dataset.md §10 |
 
 ## 2. Riesgos y trampas
 
@@ -195,8 +182,10 @@ distintas. La analogía: en 50 ejemplos le das un **mapa perfecto** del charco y
 **croquis**, y luego lo examinas con croquis. Aprende "el mapa siempre es perfecto".
 
 Este paso va **antes de cualquier descarga de OLCI** porque decide qué se descarga. El
-mismo script implementa D13, D14 y D15 (dataset.md §7): excluye los 50 del dataset CEMS, construye
-la CV agrupada y marca los 96 eventos que deben quedar fuera del pool de MCD64A1.
+script implementa **D13** (excluye las 50 series del `train`/`val` de TMB-S3) y aporta los
+datos que necesitan **D14** y **D15**: los 46 eventos utilizables para la CV agrupada y los
+96 que deben quedar fuera del pool de MCD64A1. La construcción de los folds y el marcado
+del pool quedan por escribir.
 
 Dentro de la Fase 1 hay **dos comprobaciones que van antes de entrenar**, porque cambian el
 dataset y son baratas: se hacen sobre los metadatos, sin descargar imagen.
@@ -217,29 +206,22 @@ de entrenar y evaluar.
 | **Preentrenamiento con MCD64A1** (2018-2026, mediterráneo primero) | Millones de etiquetas baratas para el preentrenamiento; después ajuste con CEMS. **No es una entrada** (dataset.md §8). ⚠️ El pool arranca en **2018**: sin OLCI no hay entrada antes de 2016 (investigacion.md §3) y 2016-2018 mezcla el dominio de S3A (§2 R22) | 2-3 días |
 | **FireCCI51 como supervisor a 250 m** (`ESA/CCI/FireCCI/5_1`, en GEE) | Preentrenamiento a **250 m** en vez de 500 m, con **nivel de confianza por píxel** (etiqueta blanda). Acaba en 2020-2022 | 1 día |
 | **FireCCI S3.1.1** (300 m, Sentinel-3, 2019-2024) | Preentrenamiento a 300 m con fecha y confianza. **Solo como ablación o tercera opinión** (investigacion.md §2): se generó con OLCI, no sirve para evaluar (R21) | 2-3 días (CEDA, no está en GEE) |
-| **Recorte a una tile fija de 64×64** | No añade eventos; recorta el coste por parche (hasta ×27 en AOIs grandes). **No es una elección**: lo impone la ventana de inferencia de TMB-S3 (dataset.md §6, D17) | 2 horas |
 | **VIIRS en vez de OLCI** | Cadencia de 12 h en lugar de 2 días | 2-3 días |
 | **EMSN (Risk & Recovery)** | Severidad como tarea adicional (multi-task) | 1 día |
 
 ## 5. Preguntas abiertas
 
-### 5.1 Preguntas sin resolver
+Las primeras son de alcance general; las que siguen nacen de las reglas D1-D18 y de la
+arquitectura de tres fuentes.
 
 - ¿El modelo generaliza a otros regímenes? (boreal, templado, australiano…)
 - ¿Cuánta pérdida se puede atribuir a la discrepancia entre Sentinel-3 y las delineaciones
   de alta resolución? → el **experimento de divergencia** (§6) lo cuantifica.
 - ¿Compensa más tener Sentinel-2 en la serie temporal que más eventos? La ablación de
   TMB-S3 sugiere que el pre-fire importa más que la frecuencia.
-- ¿El horizonte debe ser entrada continua (un escalar en días) o categorizada (corto /
-  medio / largo)? **Decidido: continua y explícita** (dataset.md §2, D10). Queda por decidir si
-  además se **codifica posicionalmente** (embeddings por día, como en los modelos de
-  video) en lugar de concatenarse como un número normalizado.
 - ¿Qué pasa si TMB-S3 deja de estar disponible o sus checkpoints cambian? La cicatriz
   generada debería **guardarse en disco** junto al dataset, para que los experimentos sean
   reproducibles.
-
-### 5.2 Preguntas abiertas nuevas (nacidas de las reglas D1-D18 y de la arquitectura de tres fuentes)
-
 - **¿Cuánto se pierde al usar la cicatriz de TMB-S3 en vez de la de CEMS?** Se responde
   midiendo el F1 de TMB-S3 contra las delineaciones de CEMS sobre las 46 series limpias.
   Se reportan **dos cifras**: la de las 46 (más muestra, sesgada a lo conocido) y la de las
@@ -287,7 +269,8 @@ alta resolución y observación de 300 m es del X%".
   PASO 0   Auditoría de splits (SOLO metadatos, sin descargar imagen)  <- HECHO
            Cruzar manifest.parquet de TMB-S3 con nuestros eventos
            -> 46 series limpias + CV agrupada de 5 folds
-  FASE 0   Mesogeos 1 km + WildFireSpread      -> cadena y modelo de referencia (tarea extent)
+  FASE 0   Mesogeos 1 km + WildFireSpread      -> cadena y referencia de pipeline
+           (tarea extent; los baselines de propagación son B0/B1/B2, dataset.md §9)
   FASE 1a  Preentrenamiento con MCD64A1 (supervisor, Mediterráneo)
            -> modelo M-A (que nunca ha visto CEMS)
   FASE 1b  Ajuste con CEMS (46 series, 5 folds)  -> modelo M-B
