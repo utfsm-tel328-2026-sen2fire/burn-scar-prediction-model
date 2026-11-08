@@ -2,6 +2,12 @@
 
 > **Estado: Fase B completada.** La documentación está reorganizada: cada documento tiene
 > una audiencia y un trabajo, y **cada dato vive en un solo fichero**.
+>
+> **En una frase:** qué se ha decidido, qué hay que construir, qué necesita el modelo en
+> producción y de dónde sale cada dato.
+>
+> Empieza por el [README de la raíz](../README.md). ¿No sabes qué es una AOI, una
+> delineación o el NBR? → [Glosario](dataset.md#1-glosario).
 
 ## Los documentos
 

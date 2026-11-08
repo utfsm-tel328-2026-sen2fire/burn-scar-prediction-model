@@ -1,5 +1,8 @@
 # Operación — qué necesita el modelo en inferencia
 
+> **En una frase:** qué datos hay que darle al modelo ya entrenado, de dónde salen y con
+> cuánto retraso llegan.
+>
 > Qué datos hay que darle al modelo ya entrenado, de dónde salen y qué antigüedad tienen.
 > Es la sección que convierte el proyecto en producto. El catálogo de fuentes con sus
 > licencias está en [`datos.md`](datos.md).
@@ -27,13 +30,13 @@ a VIIRS (12 h, 375 m), lo que refuerza la v2 (decisiones.md §4).
 **Matices verificados sobre la disponibilidad:**
 
 - Los productos **NRT de OLCI se publican en menos de 3 h** desde la adquisición; los NTC
-  en más de 24 h (en la práctica 48-72 h, porque incorporate órbita precisa y datos
+  en más de 24 h (en la práctica 48-72 h, porque incorporan la órbita precisa y datos
   meteorológicos de análisis en vez de pronóstico).
 - **La ventana del archivo NRT es limitada** (del orden de un mes a un año según el nivel
   de producto). Para histórico hay que usar NTC.
-- En **mayo 2026 un problema de ground segment** retards los NRT de S3A/S3B fuera de la
-  timeliness nominal. Es un aviso: un pipeline operacional tiene que **monitorizar la
-  latencia**, no asumirla.
+- En **mayo 2026 un problema del segmento de tierra (ground segment)** retrasó los NRT de
+  S3A/S3B fuera del plazo nominal. Es un aviso: una cadena de producción tiene que
+  **monitorizar la latencia**, no asumirla.
 - La revisita de OLCI con dos satélites es de ~2 días *ignorando nubes*; la efectiva sobre
   un AOI concreto es de ~3 días.
 - **ERA5-Land consolidado va con 2-3 meses de retraso**; la versión de cerca de tiempo real
@@ -167,7 +170,7 @@ modelo robusto a una cicatriz imperfecta, que es lo que verá en operación.
 
 **Fine-tune de TMB-S3 (opcional, decisiones.md §5).** Si en algún momento se quiere mejorar la
 cicatriz, se pueden afinar los pesos de TMB-S3 con las propias series y medir el delta. Es
-un experimento barato y no toca el resto del pipeline.
+un experimento barato y no toca el resto de la cadena de procesamiento.
 
 > **Recomendación: usar TMB-S3 congelado y centrarse en la cabeza de propagación.** El
 > proyecto gana foco y pierde la complicación de entrenar un segundo modelo. La dirección
@@ -215,7 +218,7 @@ un experimento barato y no toca el resto del pipeline.
 | **Validación cruzada agrupada en vez de split fijo** | Con 46 series, un reparto fijo evalúa 9 y desperdicia 37 (dataset.md §5) |
 | **Dos etapas, ambas evaluables (M-A y M-B)** | El ajuste CEMS es una inicialización: reportar los dos modelos convierte el conjunto pequeño en el diseño del experimento (dataset.md §8) |
 | **La evaluación es siempre contra CEMS** | CEMS lo dibujaron analistas con otras imágenes; con FireCCI S3.1.1 el modelo podría replicar su clasificador en vez de aprender física (investigacion.md §2, R21) |
-| **El input de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
+| **La entrada de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
 | **FIRMS/VIIRS como canal adicional** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
 
 ---

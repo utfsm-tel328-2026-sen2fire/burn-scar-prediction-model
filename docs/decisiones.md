@@ -1,9 +1,15 @@
 # Decisiones, riesgos y preguntas abiertas
 
+> **En una frase:** qué está decidido y por qué, qué falta por decidir, y qué riesgos se han
+> visto por el camino.
+>
 > Todo lo que **puede cambiar**: qué está decidido y por qué, qué riesgos se han visto, qué
 > falta por decidir y en qué orden. Lo que ya está cerrado y hay que implementar, en
 > [`dataset.md`](dataset.md); la justificación de fondo, en
 > [`investigacion.md`](investigacion.md).
+>
+> **Por dónde empezar:** §1.3 (lo que bloquea la descarga) → §1.2 (pendientes de
+> evaluación) → §2 (riesgos).
 
 ## 1. Log de decisiones
 
@@ -34,7 +40,7 @@
 | **P3** | **Fijar el alcance de la entrega**: ¿se entrega M-A, M-B o los dos? | Determina el volumen de trabajo. Con la estructura M-A/M-B, la decisión se puede aplazar hasta ver los resultados | dataset.md §8, §5 |
 | **P4** | **Decidir si *h* se codifica posicionalmente** (embeddings por día) o como escalar normalizado | Cambia la arquitectura del encoder | §5 |
 | **P5** | **Medir el error de TMB-S3 contra CEMS** sobre las 46 series | Si el F1 es bajo (<80%), el margen de error del modelo se ensancha y hay que decidir si hacer fine-tune | operacion.md §4, §5 |
-| **P6** | **Definir qué es "el siguiente OLCI"** en el pipeline: la mejor pasada disponible frente a la de menor latencia | Afecta a la latencia del producto y a la reproducibilidad del dataset | operacion.md §1, operacion.md §5 |
+| **P6** | **Definir qué es "el siguiente OLCI"** en la cadena de procesamiento: la mejor pasada disponible frente a la de menor latencia | Afecta a la latencia del producto y a la reproducibilidad del dataset | operacion.md §1, operacion.md §5 |
 | **P7** | **Medir el nº real de muestras con la regla "una por frame OLCI"** (censo de frames OLCI por AOI, cruzados con las rondas CEMS) | Es el tamaño real del dataset y la cifra que aparecía en el README; se citaba 551, que es el nº de productos CEMS, no de frames | dataset.md §2, dataset.md §3 |
 
 > **Recomendación de orden.** P2 primero: es barato (una fórmula) y bloquea la evaluación.
@@ -123,7 +129,7 @@ el proyecto en una evaluación.
 | **R10** | **El AOI cambia entre rondas**: la máscara de "nadie miró" es la de cada producto | Medio | Usar la máscara de la ronda correspondiente, no un AOI único |
 | **R11** | **Train/test shift en la "cicatriz conocida"**: se entrena con delineaciones de CEMS pero en operación no hay CEMS | Alto | **Resuelto**: TMB-S3 congelado genera la cicatriz en las tres fases (dataset.md §8, operacion.md §4). El shift residual (la cicatriz nunca es gold) se cubre con ruido de corrupción y con medir el F1 de TMB-S3 sobre nuestro test (§2 R17) |
 | **R12** | **El horizonte se ancla en `event_time` en vez de en la última observación** | Alto | Anclar siempre en `observed_time` / en el último frame OLCI disponible (operacion.md §2). Verificarlo en la definición del dataset |
-| **R13** | **La latencia NRT no está garantizada**: incidents de ground segment (mayo 2026) y ventana de archivo NRT limitada | Medio | Product pipeline que monitorice la latencia real y que degrade con elegancia a NTC; no asumir timings |
+| **R13** | **La latencia NRT no está garantizada**: incidencias del segmento de tierra (mayo 2026) y ventana de archivo NRT limitada | Medio | Product pipeline que monitorice la latencia real y que degrade con elegancia a NTC; no asumir timings |
 | **R14** | **El cambio de sensor entre rondas infla el "crecimiento" medido**: al pasar de una imagen de 10 m a una de 50 cm el analista "ve" un borde que antes no se podía resolver. Parte del incremento no es propagación, es diferencia de detección | Alto: el ruido se concentra en la banda del frente, que es justo lo que se predice | Medir el % de transiciones con sensor distinto; estratificar la evaluación por ese criterio y evaluar la métrica principal en el subconjunto "limpio" (mismo sensor o GSD comparable). Guardar el sensor de cada ronda (D4, D7) |
 | **R15** | **Fuga temporal en el canal "cicatriz conocida"**: si la entrada de cicatriz proviene de una ronda o de un producto posterior al último frame, el modelo recibe parte de la respuesta | Alto: infla las métricas de forma silenciosa | **Resuelto por diseño**: la cicatriz la produce TMB-S3, que solo ve los frames hasta *f* (D1, dataset.md §8). Comprobación: el timestamp máximo de la entrada nunca supera `t_frame` |
 | **R16** | **Arranque en frío**: el primer ciclo de un incendio no tiene cicatriz, una entrada que el modelo nunca vio si todas las muestras de entrenamiento tienen fuego ya detectado | Medio: en operación, el primer ciclo es el más visible para el usuario | Incluir en el entrenamiento los frames con `scar` todo a cero (D6, dataset.md §2). `scar_ok` marca aparte los frames en los que TMB-S3 no pudo producir una predicción válida |
@@ -272,7 +278,7 @@ de entrenar y evaluar.
                         convierte en un resultado del propio trabajo.
 ```
 
-Es también una cifra muy valuable para el informe: "la divergencia entre delineación de
+Es también una cifra muy valiosa para el informe: "la divergencia entre delineación de
 alta resolución y observación de 300 m es del X%".
 
 ## 7. Escalera de implementación
@@ -281,7 +287,7 @@ alta resolución y observación de 300 m es del X%".
   PASO 0   Auditoría de splits (SOLO metadatos, sin descargar imagen)  <- HECHO
            Cruzar manifest.parquet de TMB-S3 con nuestros eventos
            -> 46 series limpias + CV agrupada de 5 folds
-  FASE 0   Mesogeos 1 km + WildFireSpread      -> pipeline y baseline (tarea extent)
+  FASE 0   Mesogeos 1 km + WildFireSpread      -> cadena y modelo de referencia (tarea extent)
   FASE 1a  Preentrenamiento con MCD64A1 (supervisor, Mediterráneo)
            -> modelo M-A (que nunca ha visto CEMS)
   FASE 1b  Ajuste con CEMS (46 series, 5 folds)  -> modelo M-B

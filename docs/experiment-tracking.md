@@ -1,6 +1,11 @@
 # Guía de Experiment Tracking y TensorBoard Compartido
 
-Esta guía explica cómo registrar métricas, guardar checkpoints y visualizar entrenamientos colaborativamente entre los dos integrantes del proyecto mediante el servidor NFS compartido (`TK_Stratego/Shared`).
+> **En una frase:** cómo registrar métricas y pesos en un TensorBoard compartido por NFS
+> para que los dos desarrolladores vean lo mismo.
+
+Esta guía explica cómo registrar métricas, guardar checkpoints y visualizar entrenamientos
+colaborativamente entre los dos integrantes del proyecto mediante el servidor NFS compartido
+(`TK_Stratego/Shared`).
 
 ---
 

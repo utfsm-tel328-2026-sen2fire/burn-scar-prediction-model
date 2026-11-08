@@ -1,5 +1,8 @@
 # Investigación — estado del arte, por qué 300 m y cómo verificar los números
 
+> **En una frase:** por qué se eligió 300 m, qué dicen los benchmarks comparables y cómo se
+> pueden volver a comprobar los números de este repositorio.
+>
 > Material de referencia y de informe. Aquí no se decide nada: se justifica. Lo decidido
 > está en [`decisiones.md`](decisiones.md) y [`dataset.md`](dataset.md).
 
@@ -113,7 +116,7 @@ meteorológicos. Por eso cualquier modelo que se pretenda predecir propagación 
    modelado temporal (ConvLSTM) solo mejora cuando hay una adquisición pre-fire en la
    secuencia; con frames post-fire solos el gain es despreciable. *Los frames post-fire
    comparten la misma firma de quemado, así que no hay señal de cambio que propagar.*
-   → **El pipeline debe siempre incluir una línea base pre-incendio.**
+   → **La cadena de procesamiento debe siempre incluir una línea base pre-incendio.**
 
 2. **El etiquetado binario en el borde infla el área.** TMB-S3 reetiqueta a 300 m con la
    regla "quemado si **cualquier** píxel de 10 m dentro lo está", y reporta una inflación

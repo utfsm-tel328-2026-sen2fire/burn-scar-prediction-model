@@ -1,5 +1,8 @@
 # Dataset — especificación
 
+> **En una frase:** qué es una muestra, qué se predice sobre ella, qué reglas hay que
+> cumplir al construirla y cómo se mide el acierto.
+>
 > Especificación de lo que hay que construir: cómo se hace una muestra, qué es el
 > objetivo, qué reglas se cumplen y cómo se evalúa. Todo lo que **puede cambiar** está en
 > [`decisiones.md`](decisiones.md); el porqué de cada decisión, en
@@ -7,7 +10,8 @@
 
 ## 1. Glosario
 
-Siglas y términos que aparecen en el documento, explicados.
+Siglas y términos que aparecen en la documentación, explicados. Los que están en cursiva
+son siglas o nombres en inglés.
 
 | Término | Significado |
 |---|---|
@@ -21,7 +25,9 @@ Siglas y términos que aparecen en el documento, explicados.
 | **NBR** | `(NIR − SWIR) / (NIR + SWIR)`. El índice clásico de quemado |
 | **dNBR** | Diferencia de NBR antes y después del fuego. Da la **severidad** |
 | **TOA** | *Top-of-atmosphere*. Reflectancia/radiancia medida en el sensor, sin corregir a superficie |
-| **OR / rules of thumb** | Regla práctica empírica |
+| **Regla OR** | Se marca un píxel como quemado si **cualquier** píxel de 10 m dentro lo está. Inflat el área |
+| **Target (objetivo)** | Lo que hay que acertar: el mapa de probabilidad de quema en el horizonte pedido |
+| **Baseline (modelo de referencia)** | B0, B1 y B2: modelos sin aprendizaje automático contra los que se compara el nuestro |
 | **Ground truth (GT)** | La "verdad" contra la que se mide el modelo |
 | **Split** | Cómo se reparte el dataset en train / validación / test |
 | **Fuga espacial** | Que el mismo incendio (o su vecino) aparezca en train y test. Infla los resultados |
@@ -31,6 +37,7 @@ Siglas y términos que aparecen en el documento, explicados.
 | **zarr / netCDF / GeoTIFF** | Formatos de almacenamiento |
 | **STAC** | Catálogo estándar para buscar escenas satelitales por metadatos |
 | **UTM** | Sistema de proyección por zonas, en metros |
+| **NRT / NTC** | *Near/Non Time Critical*: la versión de un producto satelital que llega en horas (NRT) o en días (NTC) |
 
 ---
 

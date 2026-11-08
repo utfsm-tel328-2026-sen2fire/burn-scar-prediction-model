@@ -1,9 +1,12 @@
 # Catálogo de fuentes de datos
 
+> **En una frase:** de dónde sale cada dato, cómo se accede a él y con qué licencia se puede
+> publicar lo que salga de aquí.
+
 > Dónde está cada dato, con qué identificador exacto, cómo se accede y bajo qué licencia.
 >
-> **Verificado el 2026-11-06.** Los catálogos de CEMS y de Google Earth Engine cambian;
-> el método para volver a comprobarlos está en [`investigacion.md`](investigacion.md) §4.
+> Los catálogos de CEMS y de Google Earth Engine cambian; el método para volver a
+> comprobarlos está en [`investigacion.md`](investigacion.md) §4.
 
 ---
 
@@ -222,7 +225,7 @@ pip install copernicus-ems
 | `.ml.rasterize(events, resolution_m=)` | Raster **tri-estado**: `1`=quemado, `0`=no quemado *dentro del AOI*, `255`=ignorar |
 | `.ml.evaluate(prediction, labels)` | Métricas **enmascaradas**: CSI, POD, FAR (IoU se deriva de CSI), solo dentro de lo observado |
 | `.geo.summary(events)` | km² quemado y km² observado, por producto |
-| `copernicus-ems dataset -o DIR --size 256` | Recortes para entrenamiento, con sidecar de procedencia y split por área |
+| `copernicus-ems dataset -o DIR --size 256` | Recortes para entrenamiento, con un fichero de metadatos de procedencia y reparto por área |
 | `copernicus-ems scenes CODE --aoi N --optical` | Adquisiciones Sentinel-1/2 **abiertas** más cercanas a un AOI, vía STAC de Copernicus Data Space |
 | `copernicus-ems pairs CODE --aoi N` | VV/VH de Sentinel-1 sobre la rejilla de etiquetas (requiere credenciales CDSE) |
 | CLI | `copernicus-ems list / fetch / export` |
@@ -443,7 +446,7 @@ entrar en el modelo como canal de entrada** (dataset.md §8).
 | Estructura | Zarr por caja: `s3olci` (T, 21, H, W) + `firemask` (10 m) + `validity` (10 m) + `landcover` (10 m) |
 | Splits | 146 / 50 / 50 eventos (train/val/test), **estratificados geográficamente con DBSCAN (150 km)** |
 | Código | `github.com/links-ads/tmb-s3` · **MIT** · `uv`, Python ≥3.12, PyTorch CUDA 12.8, W&B |
-| Modelos | HF `links-ads/tmb-s3-models` — 4 SegFormer (2D early-fusion y ConvLSTM, 21 y 5 bandas) |
+| Modelos | HF `links-ads/tmb-s3-models` — 4 SegFormer (fusión 2D y ConvLSTM, 21 y 5 bandas) |
 | Resultados | F1 65,5-68,2 · IoU 56,7-58,7 (media de 3 semillas; solo los 4 checkpoints SegFormer publicados) |
 | Licencia | Dataset CC BY 4.0 |
 
@@ -602,9 +605,10 @@ Los productos Sentinel se publican en dos regímenes:
 **Advertencia operativa:** la ventana del archivo NRT es **limitada** (del orden de un mes
 a un año según el nivel de producto). Para recuperar histórico hay que usar NTC.
 
-**Aviso de mayo 2026:** un problema de ground segment hizo que los productos NRT y STC de
-S3A y S3B se publicaran fuera de la timeliness nominal (OLCI se recuperó el 21/05/2026).
-**Un pipeline operacional tiene que monitorizar la latencia real, no asumirla.**
+**Aviso de mayo 2026:** un problema del segmento de tierra (ground segment) hizo que los
+productos NRT y STC de
+S3A y S3B se publicaran fuera del plazo nominal (OLCI se recuperó el 21/05/2026).
+**Una cadena de producción tiene que monitorizar la latencia real, no asumirla.**
 
 ### 6.3 Qué se descarga en cada iteración
 
