@@ -48,26 +48,23 @@
 > para que la decisión de alcance se tome con los números delante, no antes (dataset.md §8).
 > P1 ya está resuelto, que era lo que bloqueaba todo lo demás.
 
-### 1.3 Lo que BLOQUEA la recopilación de datos
+### 1.3 Decisiones para la recopilación de datos (BL1-BL7) — **Cerradas**
 
-Lo anterior son pendientes de **evaluación**. Esto es distinto: son las decisiones sin las
-cuales **no se puede empezar a descargar imagen**. Cada una dice qué se decide, por qué
-bloquea y cuál es la recomendación.
+Decisiones cerradas para la ingesta y descarga de imagen. Cada una recoge la decisión
+fijada y su motivación.
 
-| # | Decisión que falta | Por qué bloquea la descarga | Recomendación |
+| # | Decisión | Estado | Acuerdo fijado |
 |---|---|---|---|
-| **BL1** | **Ventana temporal de entrada**: cuántos frames hacia atrás, y cuál es el "frame pre-incendio" | Define el rango de fechas que se pide a CDSE/GEE por cada serie. Sin esto no hay consulta que hacer | **N = 6 frames** terminando en *f*, **más 1 frame pre-incendio** (la última adquisición anterior al primer quemado). Tope de 6: con la mediana de 3 rondas por serie, cubre casi todo el evento y fija la forma del tensor para poder agrupar en lotes |
-| **BL2** | **Qué checkpoint de TMB-S3**: 5 bandas o 21, y 2D early-fusion o ConvLSTM | El modelo TMB-S3 que genera la cicatriz **exige un número de bandas concreto**. Si descargamos 5 y luego queremos 21, hay que volver a descargar | **ConvLSTM de 5 bandas** (`Oa04, Oa06, Oa08, Oa17, Oa21`): la ablación de TMB-S3 demuestra paridad 5↔21, la descarga baja **×4** y es la familia que casa con nuestro encoder. Si se dudas, descarga 21 y usa 5 (el disco es barato, el tiempo de descarga no) |
-| **BL3** | **Alcance del pool de preentrenamiento**: recuadro geográfico y años | Es lo que multiplica la descarga de OLCI, que es el cuello de botella real | **Recuadro 30-46,5°N / 6°O-31°E** (el mismo `GEO_MED` del script de auditoría) y **2018-2026**. Ni antes de 2016 (no hay OLCI) ni más años (más dominio mezclado, R22) |
-| **BL4** | **Qué cuenta como "evento" en MCD64A1**: un parche quemado, un cluster de parches, o un tile mensual | Define los "millones de muestras". Con el criterio equivocado, el pool es 10× mayor o 10× menor | **Cluster DBSCAN como TMB-S3** (ε=150 km) sobre los píxeles quemados de MCD64A1 con `BurnDate` en una ventana de 30 días. Es el mismo criterio que el paper, así que es comparable |
-| **BL5** | **¿S1 (radar) entra en la v1?** | S1 son 2 canales más y **duplica la descarga** de Sentinel-1 (10 m para acabar en 300 m) | **S1 a la v2.** TMB-S3 no lo usa, es el ablated channel más caro, y su valor es marginal a 300 m. **FIRMS/VIIRS sí en la v1**: es un CSV/API, coste ~0, y aporta la señal de "dónde hay fuego ahora" |
-| **BL6** | **¿Las 9 series no mediterráneas se quedan?** | Son 9 de las 46 series (EMSR894 en el norte de Francia, y las series francesas de ultramar: Nueva Caledonia, Kerguelen) | **Fuera del resultado principal.** El proyecto es del Mediterráneo; incluir Nueva Caledonia debilita la afirmación. Se pueden dejar en el dataset y reportarlas como estrato extra |
-| **BL7** | **Máscara de nubes de OLCI**: ¿banderas nativas de CDSE o un proxy? | Decide si hay que descargar los flags aparte (un request más por acquisition) | **Banderas nativas de CDSE.** GEE no las trae, y son las que usa TMB-S3: sin ellas, la entrada no coincide con lo que el modelo preentrenado espera. Es un request más, no un problema |
+| **BL1** | **Ventana temporal de entrada** | **Cerrada** | **$N = 6$ frames** terminando en *f*, **más 1 frame pre-incendio** (la última adquisición limpia anterior al primer quemado). Tensor $(T=7, C, 64, 64)$ |
+| **BL2** | **Checkpoint de TMB-S3** | **Cerrada** | **ConvLSTM de 5 bandas** (`Oa04, Oa06, Oa08, Oa17, Oa21`) de `links-ads/tmb-s3-models`. Reduce descarga $\times 4$ preservando rendimiento |
+| **BL3** | **Alcance del preentrenamiento** | **Cerrada** | Recuadro mediterráneo `GEO_MED` (**30–46,5°N / 6°O–31°E**) y periodo **2018–2026** (constelación dual S3A+S3B). Excluidos los 96 eventos CEMS (D15) |
+| **BL4** | **Definición de "evento" en MCD64A1** | **Cerrada** | **Cluster DBSCAN** ($\varepsilon=150$ km, ventana 30 d) sobre píxeles quemados con recorte $64\times 64$ px centrado en el evento (patrón TMB-S3) |
+| **BL5** | **Canales de entrada v1** | **Cerrada** | **S1 (radar) a la v2.** En la v1: OLCI (5 bandas) + ERA5/GFS + DEM/WorldCover + **FIRMS/VIIRS** (focos activos + FRP 48 h) |
+| **BL6** | **Series no mediterráneas (9 de 46)** | **Cerrada** | **Fuera de la CV principal.** 37 series puramente mediterráneas para los 5 folds; las 9 de ultramar/atlántico quedan como test complementario fuera de dominio |
+| **BL7** | **Máscara de nubes de OLCI** | **Cerrada** | **Banderas de calidad nativas de CDSE**. Idéntico a lo que vio TMB-S3 al entrenarse |
 
-> **Con estas siete decididas, la recopilación puede empezar.** Ninguna de estas siete es
-> P2-P6: esas bloquean la **evaluación**, no la **descarga**. Y si una de ellas se
-> equivocara, el arreglo es barato: cambiar la regla y reejecutar la ingesta. Lo que no
-> es barato es descargar dos veces 40 GB de OLCI.
+> **Con estas siete decisiones cerradas, la recopilación está desbloqueada.** Las tareas
+> pendientes P2-P6 bloquean la **evaluación** y modelado, no la ingesta.
 
 ### 1.4 Alternativas descartadas (log de decisiones)
 

@@ -47,12 +47,11 @@ El detalle completo, con las alternativas descartadas y el porqué, está en
 
 ## Estado
 
-**Diseño cerrado, implementación pendiente.** El dataset está diseñado y medido, y la
-auditoría de splits (PASO 0) ya está hecha. No hay implementación del modelo todavía: lo que
-hay es el entorno y las utilidades de experimento. Antes de descargar imagen hay que decidir
-siete cosas ([`docs/decisiones.md`](docs/decisiones.md) §1.3) y, en paralelo, una que
-bloquea la evaluación pero no la descarga: **P2, la definición precisa de B2**
-([`docs/decisiones.md`](docs/decisiones.md) §1.2).
+**Diseño cerrado, recopilación desbloqueada.** El dataset está diseñado y medido, la
+auditoría de splits (PASO 0) está hecha y las siete decisiones de recopilación
+(**BL1–BL7**, [`docs/decisiones.md`](docs/decisiones.md) §1.3) han sido cerradas. El siguiente
+paso es implementar el pipeline de ingesta y metadatos para las 46 series limpias de CEMS, y en
+paralelo cerrar la definición formal de **B2 (P2)** para el criterio de evaluación.
 
 ## Documentación
 
