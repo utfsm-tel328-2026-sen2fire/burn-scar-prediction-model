@@ -13,7 +13,13 @@ Cada desarrollador debe tener su archivo `.env` local en la raíz del repositori
    cp .env.example .env
    ```
 
-2. Configura tus dos variables en `.env`:
+2. Configura tus variables en `.env`:
+   * `BURNSCAR_SHARED_STORAGE` (obligatoria para compartir): si la ruta no existe o no está
+     montada, el sistema avisa y usa el almacenamiento local de respaldo.
+   * `BURNSCAR_USER` (recomendada): aísla tus experimentos con tu nombre. Si no la pones,
+     el sistema usa el usuario del sistema operativo, que puede coincidir con el de tu
+     compañero.
+   * `BURNSCAR_TENSORBOARD_PORT` (opcional, por defecto 6006).
    * **Para Antonio:**
      ```ini
      BURNSCAR_SHARED_STORAGE=/home/antonio/TK_Stratego/Shared

@@ -5,11 +5,12 @@ Auditoría de splits: ¿qué incendios mediterráneos de CEMS ha visto ya TMB-S3
 TMB-S3 se entrenó con CEMS y usó un split por cluster geográfico (DBSCAN, eps=150 km).
 Antes de construir el dataset hay que saber cuáles de nuestras series están dentro de
 su train/val, porque en ellas la cicatriz de entrada sería el perímetro CEMS *memorizado*
-y el target cambiaría de significado (research.md 6.4 y 9.4.1).
+y el target cambiaría de significado (operacion.md §4 y decisiones.md §3).
 
 Uso:
     python3 scripts/audit_tmb_splits.py                  # resumen por stdout
     python3 scripts/audit_tmb_splits.py --json out.json  # vuelca el detalle
+    python3 scripts/audit_tmb_splits.py --paises-extra   # añade Chipre, Turquía, etc.
 
 Solo biblioteca estándar. No descarga imagen: son metadatos.
 """
@@ -31,15 +32,23 @@ CEMS_API = "https://rapidmapping.emergency.copernicus.eu/backend/dashboard-api"
 HF_ROWS = "https://datasets-server.huggingface.co/rows"
 HF_DATASET = "links-ads/tmb-s3"
 
-# Países mediterráneos según la lista de países de la API de CEMS.
-# Aviso: "France" incluye Tahiti, Nueva Caledonia, Kerguelen y el norte de Francia,
-# que geográficamente no son mediterráneos. Se marcan aparte con GEO_MED.
+# Países mediterráneos según el censo documentado (dataset.md §3): 14 países.
+# Aviso: "France" incluye el norte de Francia y el territorio francés de ultramar
+# (Nueva Caledonia, Kerguelen), que geográficamente no son mediterráneos.
+# Se marcan aparte con GEO_MED (decisiones.md §1.3 BL6).
 MED_COUNTRIES = {
     "Albania", "Bosnia and Herzegovina", "Bosnia and Herz.", "Bulgaria",
     "Croatia", "France", "Greece", "Italy", "Montenegro", "Portugal",
-    "Serbia", "Slovenia", "Spain", "Syria", "Tunisia", "Cyprus",
-    "Turkey", "Türkiye", "Morocco", "Egypt", "Libya", "Lebanon",
-    "Israel", "Palestine",
+    "Serbia", "Slovenia", "Spain", "Syria", "Tunisia",
+}
+
+# Países del Mediterráneo oriental y del norte de África que quedan FUERA del
+# censo documentado. Hoy no tienen ninguna activación de incendio en la API, pero
+# si las hubiera el script dejaría de reproducir las cifras de dataset.md §3: por eso
+# quedan aparte y solo se activan con --paises-extra.
+MED_COUNTRIES_EXTRA = {
+    "Cyprus", "Turkey", "Türkiye", "Morocco", "Egypt", "Libya",
+    "Lebanon", "Israel", "Palestine",
 }
 
 # Recuadro que sí es "Mediterráneo" en sentido geográfico (criterio de 9.4.1).
@@ -140,7 +149,7 @@ def index_tmb(rows: list) -> dict:
 
 # ---------------------------------------------------------------- CEMS
 
-def fetch_mediterranean_activations() -> list:
+def fetch_mediterranean_activations(countries: set[str]) -> list:
     """Activaciones de incendio mediterráneas según la API de CEMS."""
     activations: list = []
     url = f"{CEMS_API}/public-activations-info/?limit=500"
@@ -153,7 +162,7 @@ def fetch_mediterranean_activations() -> list:
     return [
         a for a in activations
         if a.get("category") == "Wildfire"
-        and any(c in MED_COUNTRIES for c in (a.get("countries") or []))
+        and any(c in countries for c in (a.get("countries") or []))
     ]
 
 
@@ -190,6 +199,11 @@ def fetch_series(activations: list) -> list:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Auditoria de splits TMB-S3 vs CEMS")
     ap.add_argument("--json", help="fichero donde volcar el detalle")
+    ap.add_argument(
+        "--paises-extra",
+        action="store_true",
+        help="incluir Chipre, Turqua, Marruecos, etc. (fuera del censo documentado)",
+    )
     args = ap.parse_args()
 
     print("1/3 · manifest de TMB-S3")
@@ -204,7 +218,8 @@ def main() -> int:
     print(f"    {len(rows)} cajas · {len(tmb)} activaciones · splits {dict(split_count)}")
 
     print("2/3 · activaciones mediterraneas de CEMS")
-    acts = fetch_mediterranean_activations()
+    countries = MED_COUNTRIES | (MED_COUNTRIES_EXTRA if args.paises_extra else set())
+    acts = fetch_mediterranean_activations(countries)
     print(f"    {len(acts)} activaciones de incendio mediterraneas")
 
     print("3/3 · series con senal de crecimiento")
@@ -282,9 +297,17 @@ def main() -> int:
         ng = sum(1 for s in clean_geo if s["dist_event_km"] is not None
                  and s["dist_event_km"] < thr)
         print(f"    < {thr:>3} km: {n:>3} series ({ng} mediterraneas)")
+    # Complemento: decisiones.md §3 reporta las series a >=150 km de cualquier
+    # evento de TMB-S3 (6 series, 2 mediterraneas en el censo del 2026-11-07).
+    for thr in (150,):
+        n = sum(1 for s in clean if s["dist_event_km"] is not None
+                and s["dist_event_km"] >= thr)
+        ng = sum(1 for s in clean_geo if s["dist_event_km"] is not None
+                 and s["dist_event_km"] >= thr)
+        print(f"    >= {thr:>3} km: {n:>3} series ({ng} mediterraneas)")
     print()
     print("Aviso: el criterio de 150 km deja muy pocas series; se usa como dato,")
-    print("       no como criterio de reparto (research.md 9.4.1).")
+    print("       no como criterio de reparto (decisiones.md §3).")
     print()
 
     if args.json:

@@ -3,7 +3,7 @@
 > Dónde está cada dato, con qué identificador exacto, cómo se accede y bajo qué licencia.
 >
 > **Verificado el 2026-11-06.** Los catálogos de CEMS y de Google Earth Engine cambian;
-> el método para volver a comprobarlos está en [`research.md`](research.md) §10.
+> el método para volver a comprobarlos está en [`investigacion.md`](investigacion.md) §4.
 
 ---
 
@@ -73,13 +73,16 @@ detail = requests.get(f"{API}/public-activations/?code=EMSR922").json()["results
 
 | | |
 |---|---|
-| Activaciones en la API | 268 (2023: 54, 2024: 69, 2025: 69, 2026: 75) |
+| Activaciones en la API | 268 (2023: 55, 2024: 69, 2025: 69, 2026: 75) |
 | De ellas, incendio | **131** |
 | De ellas, incendio y mediterráneas | **107** (14 países) |
 | Productos de delineación (Med) | 489 |
 | Series con ≥1 delineación | 130 |
 | Series con ≥2 delineaciones | **96** |
 | Transiciones de crecimiento | **359** |
+
+> Re-verificado el 2026-11-08 contra la API: 268 activaciones (2023: 55, 2024: 69, 2025: 69,
+> 2026: 75), 131 de incendio, 107 mediterráneas (14 países). Sin cambios.
 
 **Límite duro:** el endpoint de detalle **devuelve 403 para todo código anterior a
 EMSR656** (23/03/2023). Verificado con EMSR001, 100, 200, 300, 400, 450, 500, 550, 600,
@@ -189,11 +192,12 @@ antemano con qué sensor se trazó cada etiqueta.
 > paso de Sentinel-2 (10 m) a Legion (50 cm) ocurre entre las dos primeras rondas: parte del
 > "crecimiento" medido ahí es **diferencia de detección**, no propagación. Guardar siempre
 > el sensor de cada ronda y usarlo para **estratificar la evaluación** (riesgo R14 de
-> `research.md` §7). La regla que hay que cumplir al construir las muestras es: la cicatriz
-> de entrada es la última ronda con `observed_time ≤ t_frame` (§5.6 D1).
+> `decisiones.md` §2). La regla que hay que cumplir al construir las muestras es: el target
+> se ancla en la ronda siguiente (`r+1`) y la cicatriz de entrada la produce TMB-S3, no una
+> ronda de CEMS (dataset.md §7 D1, D9).
 
 > **FEP fuera.** El primer producto de cada serie (`FEP`, first estimate) es una estimación
-> de baja resolución: no entra en la serie de etiquetas (§5.6 D5).
+> de baja resolución: no entra en la serie de etiquetas (dataset.md §7 D5).
 
 ### 2.6 Otras piezas de CEMS
 
@@ -410,7 +414,7 @@ Aunque se publica como producto mensual, el payload es **día de quema por píxe
 **Su papel en este proyecto: supervisor del preentrenamiento, nunca entrada.** Es
 precisamente por tener ~6 semanas de retraso por lo que es un buen supervisor: **no puede
 filtrar información que en producción no tendrías**. Pero por la misma razón **no puede
-entrar en el modelo como canal de entrada** (`research.md` §5.7).
+entrar en el modelo como canal de entrada** (dataset.md §8).
 
 **Trampas:**
 
@@ -464,14 +468,14 @@ residual** ("nearby events from the same geographic cluster can fall in differen
 **Su papel en este proyecto: generador de cicatriz congelado.** Es la pieza que produce el
 canal `scar` de la entrada en las tres fases (preentrenamiento, ajuste e inferencia). Por
 eso sus sesgos se heredan, y por eso hay que medirlos sobre nuestras propias series
-(`research.md` §6.4).
+(operacion.md §4).
 
 **La auditoría de splits (paso 0, bloqueante).** El dataset incluye un
 `manifest.parquet` con las columnas `split` (`train`/`val`/`test`) y `bbox_id` con formato
 `EMSR168-1-0` (código de activación, índice de AOI, ronda). Cruzándolo con nuestros 96
 eventos mediterráneos se puede saber **qué incendios y qué geografía ya vio TMB-S3**, y por
 tanto construir un split en el que test y val contengan **solo eventos que TMB-S3 no ha
-visto** (`research.md` §9.4.1, R18). El mismo cruce sirve para excluir esos eventos del
+visto** (decisiones.md §3, R18). El mismo cruce sirve para excluir esos eventos del
 pool de preentrenamiento con MCD64A1 (R20).
 
 ### 5.2 WildFireSpread / Mesogeos
@@ -534,15 +538,16 @@ mirando la reflectancia de **OLCI**, que es exactamente lo que el modelo recibe.
 modelo entrenado contra FireCCIS311 puede limitarse a **replicar el clasificador de
 FireCCI** en vez de aprender física de propagación.
 
-> **Por eso FireCCIS311 no sustituye a CEMS como conjunto de evaluación** (`research.md`
-> §3.6, R21). CEMS lo dibujaron analistas mirando imagen comercial y Sentinel-2: es la
-> única fuente cuyo proceso **no pasa por las imágenes del modelo**.
+> **Por eso FireCCIS311 no sustituye a CEMS como conjunto de evaluación**
+> (`investigacion.md` §2, R21). CEMS lo dibujaron analistas mirando imagen comercial (80 %)
+> y Sentinel-2 (18 %): es la única fuente cuyo proceso **no pasa por las imágenes del modelo
+> en el frente** — el Sentinel-2 que usa el modelo es solo línea base pre-incendio.
 >
 > **Jerarquía de independencia de etiquetas:**
 >
 > | Fuente | ¿Generada con…? | ¿Recuperable desde OLCI? | Uso |
 > |---|---|---|---|
-> | **CEMS** | analistas, imagen comercial + S2 | **No** | **evaluación** |
+> | **CEMS** | analistas, imagen comercial + S2 | **No** (el S2 del modelo es solo línea base pre-incendio) | **evaluación** |
 > | MCD64A1 / FireCCI51 | reflectancia **MODIS** | parcialmente | preentrenamiento |
 > | FireCCIS311 | reflectancia **OLCI** | **casi directamente** | ablación / tercera opinión |
 
@@ -565,7 +570,7 @@ preentrenamiento a 300 m.
 ## 6. Acceso en tiempo real (operación)
 
 Cómo se accede a cada dato cuando el objetivo es **predecir durante el incendio**, no
-entrenar. El razonamiento completo está en [`research.md`](research.md) §6.
+entrenar. El razonamiento completo está en [`operacion.md`](operacion.md).
 
 ### 6.1 Requisitos de cuenta
 
@@ -603,7 +608,7 @@ S3A y S3B se publicaran fuera de la timeliness nominal (OLCI se recuperó el 21/
 
 ### 6.3 Qué se descarga en cada iteración
 
-En cada ciclo del evento (cada ~2-3 días, §6.5 de `research.md`):
+En cada ciclo del evento (cada ~2-3 días, operacion.md §5):
 
 ```
   Sentinel-3 OLCI  ->  ventana temporal sobre el AOI, 5 bandas
@@ -624,7 +629,7 @@ iteración es de decenas de MB.
 requiere que una autoridad autorizada lo active, y sus productos tardan de días a semanas.
 Es una fuente de **etiquetas** y de **ground truth**, nunca de entrada en tiempo real.
 
-De ahí la necesidad de un **generador de cicatriz propio** (ver `research.md` §6.3-6.4): la
+De ahí la necesidad de un **generador de cicatriz propio** (ver `operacion.md` §3-4): la
 "cicatriz conocida" tiene que salir de un modelo, no de un analista. En este proyecto ese
 generador es **TMB-S3 congelado** (§5.1), que usa el mismo sensor, la misma resolución y
 las mismas etiquetas que CEMS.
@@ -640,7 +645,7 @@ preentrenamiento, CEMS como etiqueta del ajuste y como métrica).
 |---|---|
 | Revisor más lento | Sentinel-3 OLCI, ~2-3 días |
 | **Cadencia del producto** | **cada ~2-3 días**, no diario |
-| Para un producto diario | VIIRS (12 h, 375 m) → la v2 (§9.1 de `research.md`) |
+| Para un producto diario | VIIRS (12 h, 375 m) → la v2 (decisiones.md §4) |
 
 ---
 
