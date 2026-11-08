@@ -60,6 +60,12 @@ uv run --extra cuda python scripts/launch_tensorboard.py
   ```
 * Abre tu navegador en **[http://localhost:6006](http://localhost:6006)**.
 
+> [!NOTE]
+> El comando de arriba usa `uv` con Python del sistema. Si trabajas en NixOS con el
+> shell de devenv, el intérprete y el entorno virtual son otros: el venv de devenv vive en
+> `.devenv/state/venv` en vez de `./.venv`, y el servidor se lanza desde dentro del shell.
+> Ver [`nixos.md`](nixos.md) §3 y §5.
+
 ### Parámetros opcionales del launcher:
 * Cambiar de puerto: `uv run --extra cuda python scripts/launch_tensorboard.py --port 6007`
 * Exponer a la red local: `uv run --extra cuda python scripts/launch_tensorboard.py --host 0.0.0.0`

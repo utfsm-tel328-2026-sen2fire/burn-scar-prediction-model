@@ -9,6 +9,9 @@ __pycache__/
 runs/
 checkpoints/
 
+# Estado local del shell de devenv (interprete, venv, perfil)
+.devenv/
+
 # Configuración local (rutas de montaje personales)
 .env
 .env.*

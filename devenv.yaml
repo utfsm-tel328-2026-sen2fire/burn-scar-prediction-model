@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+#
+# El interprete de Python viene de pkgs.python312 (ver devenv.nix), no del
+# input nixpkgs-python: ese input compila releases de parche concretos de
+# CPython cuyo "mimetypes.patch" de nixpkgs puede no aplicar, y rompe la
+# construccion del shell.
+inputs:
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs

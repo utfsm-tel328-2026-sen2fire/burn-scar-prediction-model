@@ -20,6 +20,7 @@
 | [`investigacion.md`](investigacion.md) | Estado del arte, por qué 300 m, cómo verificar los números | referencia |
 | [`datos.md`](datos.md) | Catálogo de fuentes: dónde está cada dato, IDs, endpoints, licencias | referencia |
 | [`experiment-tracking.md`](experiment-tracking.md) | TensorBoard compartido, checkpoints, NFS | guía |
+| [`nixos.md`](nixos.md) | Cómo trabajar en NixOS con devenv: shell, acelerador, tareas | guía |
 
 El corte es **lo que puede cambiar vs. lo que ya está cerrado**: `decisiones.md` es el único
 sitio donde se toca lo que está abierto; `dataset.md` y `datos.md` son especificación.
