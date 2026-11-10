@@ -5,8 +5,16 @@ description = "Predicción multi-horizonte del crecimiento de cicatrices de ince
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "earthengine-api>=1.7.52",
+    "huggingface-hub>=2.4.0",
     "numpy>=1.26",
+    "pyproj>=3.7.2",
+    "rasterio>=1.4.4",
+    "safetensors>=0.8.0",
+    "scikit-learn>=1.9.1",
+    "shapely>=2.2.0",
     "tensorboard>=2.18",
+    "zarr>=3.1.6",
 ]
 
 # Backends de aceleración, mutuamente excluyentes. Se elige uno al sincronizar:

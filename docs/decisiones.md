@@ -41,7 +41,7 @@
 | **P4** | **Decidir si *h* se codifica posicionalmente** (embeddings por día) o como escalar normalizado | Cambia la arquitectura del encoder | dataset.md §2, D10 |
 | **P5** | **Medir el error de TMB-S3 contra CEMS** sobre las 46 series | Si el F1 es bajo (<80%), el margen de error del modelo se ensancha y hay que decidir si hacer fine-tune | operacion.md §4; §5 |
 | **P6** | **Definir qué es "el siguiente OLCI"** en la cadena de procesamiento: la mejor pasada disponible frente a la de menor latencia | Afecta a la latencia del producto y a la reproducibilidad del dataset | operacion.md §1, operacion.md §5 |
-| **P7** | **Medir el nº real de muestras con la regla "una por frame OLCI"** (censo de frames OLCI por AOI, cruzados con las rondas CEMS) | Es el tamaño real del dataset y la cifra que aparecía en el README; se citaba 551, que es el nº de productos CEMS, no de frames | dataset.md §2, dataset.md §3 |
+| ~~**P7**~~ | ~~**Medir el nº real de muestras con la regla "una por frame OLCI"**~~ | **Hecho.** 414 muestras $(f, h)$ sobre 44 series utilizables (336 en 36 series mediterráneas, 78 en 8 ultramar/atlántico). Manifiesto en `data/cems_manifest_46.json` | dataset.md §2, dataset.md §3 |
 
 > **Recomendación de orden.** P2 primero: es barato (una fórmula) y bloquea la evaluación.
 > P3 puede esperar hasta tener resultados: la estructura M-A/M-B está pensada precisamente
@@ -187,9 +187,9 @@ del pool quedan por escribir.
 Dentro de la Fase 1 hay **dos comprobaciones que van antes de entrenar**, porque cambian el
 dataset y son baratas: se hacen sobre los metadatos, sin descargar imagen.
 
-| Comprobación | Qué mide | Por qué va primero |
+| Comprobación | Qué mide / Resultado | Por qué va primero |
 |---|---|---|
-| **% de transiciones con sensor distinto** | Cuánto del "crecimiento" medido es en realidad diferencia de detección | Decide si hay que filtrar transiciones y dónde se evalúa (§2 R14) |
+| **% de transiciones con sensor distinto** | **Medido: 116 de 188 transiciones (61,7%) cambian de sensor** (Legion, Sentinel-2, SPOT, WorldView). | Justifica plenamente estratificar la evaluación (§2 R14, D4) para no confundir diferencia de detección con propagación |
 | **Auditoría de causalidad** | Que ninguna muestra use una ronda o un producto con `observed_time > t_frame` | Si falla, **todas** las métricas están infladas y no hay nada que salvar (§2 R15) |
 
 Si algo va mal, es mucho más barato descubrirlo antes de construir el dataset que después
