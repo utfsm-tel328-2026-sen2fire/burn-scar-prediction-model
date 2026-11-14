@@ -11,7 +11,6 @@ from __future__ import annotations
 from pathlib import Path
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import Tensor
 from safetensors.torch import load_file
 
@@ -89,6 +88,7 @@ def predict_burn_scar(model: nn.Module, x: Tensor) -> Tensor:
         x = x.unsqueeze(0)
 
     logits = model(x)  # (B, T, 2, H, W)
-    probs = F.softmax(logits, dim=2)[:, :, 1]  # canal 1 = quemado
+    # Canal 0 = logit de quemado (upstream: _FIRE_CH=0). El canal 1 es la cabeza de nubes.
+    probs = torch.sigmoid(logits[:, :, 0])
 
     return probs if is_batched else probs.squeeze(0)
