@@ -19,7 +19,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from burn_scar.baselines import aggregate_series_metrics, compute_metrics_numpy
-from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders
+from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders, resolve_loader_options
 from burn_scar.models import BurnScarPropagationModel, masked_bce_dice_loss
 from burn_scar.tracking import ExperimentTracker
 
@@ -119,7 +119,7 @@ def evaluate_checkpoint_on_test(
     device: str,
     threshold: float,
     batch_size: int = 8,
-    num_workers: int = 2,
+    num_workers: int | None = None,
 ) -> dict[str, float]:
     """
     Evalúa un checkpoint sobre el conjunto de test (fold -1) con un umbral ya
@@ -134,12 +134,13 @@ def evaluate_checkpoint_on_test(
     if len(dataset) == 0:
         return {}
 
+    nw, pin = resolve_loader_options(num_workers)
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
+        num_workers=nw,
+        pin_memory=pin,
     )
     res = evaluate_fold(model, loader, device=device)
     metrics = res["per_threshold"].get(threshold)
@@ -197,6 +198,7 @@ def train_fold(
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         index_path=args.index,
+        pin_memory=args.pin_memory,
     )
 
     model = BurnScarPropagationModel(
@@ -309,7 +311,18 @@ def main() -> int:
     parser.add_argument("--folds", nargs="+", type=int, default=[0, 1, 2, 3, 4])
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=None,
+        help="Workers del DataLoader (None = automático: 0 en ROCm, 2 en CUDA)",
+    )
+    parser.add_argument(
+        "--pin-memory",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Memoria fijada del DataLoader (None = automático)",
+    )
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--hidden-ch", type=int, default=32)
     parser.add_argument("--scar-corruption", type=float, default=0.15)

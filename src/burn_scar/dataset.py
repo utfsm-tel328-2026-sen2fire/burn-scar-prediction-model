@@ -17,6 +17,27 @@ from torch.utils.data import Dataset, DataLoader
 DEFAULT_INDEX_PATH = Path("data/processed/dataset_index.json")
 
 
+def resolve_loader_options(
+    num_workers: int | None = None,
+    pin_memory: bool | None = None,
+) -> tuple[int, bool]:
+    """
+    Decide (num_workers, pin_memory) según el backend de GPU.
+
+    En ROCm (AMD) `pin_memory=True` con workers es patológico: cada lote
+    reserva memoria fijada con hipHostMalloc (cientos de ms por tensor) y el
+    fork de un proceso con contexto HIP inicializado cuesta segundos. Con este
+    dataset (≈2 ms por muestra) los workers no aportan nada, así que en AMD
+    se desactivan. En CUDA se mantienen los valores habituales.
+    """
+    is_rocm = bool(getattr(torch.version, "hip", None))
+    if num_workers is None:
+        num_workers = 0 if is_rocm else 2
+    if pin_memory is None:
+        pin_memory = False if is_rocm else torch.cuda.is_available()
+    return int(num_workers), bool(pin_memory)
+
+
 class BurnScarDataset(Dataset):
     """
     Dataset PyTorch para entrenamiento y evaluación multi-horizonte.
@@ -110,15 +131,21 @@ class BurnScarDataset(Dataset):
 def get_cv_dataloaders(
     val_fold: int,
     batch_size: int = 8,
-    num_workers: int = 2,
+    num_workers: int | None = None,
     index_path: str | Path | None = None,
+    pin_memory: bool | None = None,
 ) -> tuple[DataLoader, DataLoader]:
     """
     Retorna (train_loader, val_loader) para un fold de validación específico (0..4).
     Entrena en los 4 folds restantes y valida en val_fold (D14).
+
+    `num_workers` y `pin_memory` en None se resuelven según el backend
+    (ver `resolve_loader_options`).
     """
     if val_fold not in range(5):
         raise ValueError(f"val_fold debe estar en [0..4], recibido: {val_fold}")
+
+    nw, pin = resolve_loader_options(num_workers, pin_memory)
 
     train_folds = [f for f in range(5) if f != val_fold]
     train_dataset = BurnScarDataset(index_path=index_path, folds=train_folds)
@@ -128,15 +155,15 @@ def get_cv_dataloaders(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
+        num_workers=nw,
+        pin_memory=pin,
     )
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=num_workers,
-        pin_memory=torch.cuda.is_available(),
+        num_workers=nw,
+        pin_memory=pin,
     )
 
     return train_loader, val_loader

@@ -1,9 +1,24 @@
 import pytest
 import torch
 from pathlib import Path
-from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders
+from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders, resolve_loader_options
 
 INDEX_PATH = Path("data/processed/dataset_index.json")
+
+
+def test_resolve_loader_options_desactiva_workers_en_rocm():
+    """En AMD los workers con pin_memory son patológicos: se desactivan."""
+    num_workers, pin_memory = resolve_loader_options()
+    if torch.version.hip:
+        assert num_workers == 0
+        assert pin_memory is False
+    else:
+        assert num_workers == 2
+
+
+def test_resolve_loader_options_respeta_valores_explicitos():
+    assert resolve_loader_options(num_workers=4, pin_memory=True) == (4, True)
+    assert resolve_loader_options(num_workers=0, pin_memory=False) == (0, False)
 
 
 @pytest.mark.skipif(not INDEX_PATH.exists(), reason="Dataset index no generado")
