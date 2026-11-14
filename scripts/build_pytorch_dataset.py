@@ -181,24 +181,42 @@ def main() -> int:
                     b5 = raw_bands[:5]
                 olci_seq.append(b5.astype(np.float32))
 
-            # Tensor OLCI shape: (7, 5, 64, 64)
+            # Tensor OLCI shape: (7, 5, 64, 64) en orden [Oa04, Oa06, Oa08, Oa17, Oa21]
             olci_tensor = np.stack(olci_seq, axis=0)
+            # Limpiar nodata/fill de GEE OLCI (>= 32768 o <= 0)
+            olci_valid_mask = (olci_tensor > 0) & (olci_tensor < 32768)
+            olci_clean = np.where(olci_valid_mask, olci_tensor, np.nan)
 
             # 3. Inferencia de TMB-S3 para obtener la cicatriz actual scar(f)
-            # Normalización de entrada para TMB-S3 (5 bandas + landcover normalizado)
-            tmb_in_seq = []
-            wc_norm = (worldcover / 100.0).astype(np.float32)
-            for t_idx in range(7):
-                b5_norm = olci_tensor[t_idx] / 100.0
-                combined_6ch = np.concatenate([b5_norm, wc_norm[np.newaxis, :, :]], axis=0)
-                tmb_in_seq.append(combined_6ch)
+            # TMB-S3 espera bandas en orden [Oa21, Oa17, Oa08, Oa06, Oa04] (config.yaml: [20, 16, 7, 5, 3])
+            # normalizadas (z-score por banda sobre píxeles válidos) + landcover en [0..1]
+            olci_tmb_order = olci_clean[:, [4, 3, 2, 1, 0], :, :]
+            olci_tmb_norm = np.zeros_like(olci_tmb_order, dtype=np.float32)
+            for b_idx in range(5):
+                band_vals = olci_tmb_order[:, b_idx]
+                valid_b = ~np.isnan(band_vals)
+                if np.any(valid_b):
+                    mean_b = float(np.mean(band_vals[valid_b]))
+                    std_b = float(np.std(band_vals[valid_b]))
+                    if std_b < 1e-6:
+                        std_b = 1.0
+                    olci_tmb_norm[:, b_idx] = np.where(
+                        valid_b, (band_vals - mean_b) / std_b, 0.0
+                    )
 
-            tmb_tensor = torch.from_numpy(np.stack(tmb_in_seq, axis=0)).unsqueeze(0).to(device)
+            wc_norm = (worldcover / 100.0).astype(np.float32)
+            wc_seq = np.broadcast_to(wc_norm[np.newaxis, np.newaxis, :, :], (7, 1, 64, 64))
+            tmb_in_np = np.concatenate([olci_tmb_norm, wc_seq], axis=1)  # (7, 6, 64, 64)
+
+            tmb_tensor = torch.from_numpy(tmb_in_np).unsqueeze(0).to(device)
             with torch.no_grad():
                 scar_probs = predict_burn_scar(tmb_model, tmb_tensor).cpu().numpy()[0]  # (7, 64, 64)
 
             # La cicatriz de entrada en el frame actual f es el último frame de la secuencia
             scar_f = scar_probs[-1]  # (64, 64) en [0..1]
+
+            # Guardar OLCI limpio (sin 32768) para el modelo de propagación
+            olci_tensor = np.where(olci_valid_mask, olci_tensor, 0.0).astype(np.float32)
 
             # 4. Target de propagación: lo NUEVO quemado en (f, f+h] (D9)
             # Target = clip(poligono(r+1) - scar_TMB3(f), 0, 1)
