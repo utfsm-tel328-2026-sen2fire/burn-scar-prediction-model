@@ -123,16 +123,30 @@ def masked_bce_dice_loss(
     logits: Tensor,
     target: Tensor,
     mask: Tensor,
-    pos_weight: float = 4.0,
+    pos_weight: float | None = None,
     dice_weight: float = 0.5,
+    max_pos_weight: float = 50.0,
 ) -> Tensor:
     """
     Pérdida BCEWithLogits + Soft Dice calculada solo en píxeles válidos (mask == 1).
+
+    Args:
+        pos_weight: peso de la clase positiva. Si es None se deriva del desbalance
+            real del lote (píxeles válidos no quemados / píxeles válidos quemados),
+            acotado a [1, max_pos_weight]. Con ~5% de píxeles quemados, un valor
+            fijo bajo hace que el modelo prediga ausencia de quemado (recall ~0).
     """
     valid = (mask == 1).float()
     valid_count = valid.sum().clamp(min=1.0)
 
-    pw = torch.tensor([pos_weight], device=logits.device, dtype=logits.dtype)
+    if pos_weight is None:
+        n_pos = (target * valid).sum()
+        n_neg = (valid_count - n_pos).clamp(min=0.0)
+        pw_value = float((n_neg / n_pos.clamp(min=1.0)).clamp(1.0, max_pos_weight).item())
+    else:
+        pw_value = float(pos_weight)
+
+    pw = torch.full_like(target, pw_value)
     bce_per_px = F.binary_cross_entropy_with_logits(
         logits, target, pos_weight=pw, reduction="none"
     )

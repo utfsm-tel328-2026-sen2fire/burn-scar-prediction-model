@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from burn_scar.models import BurnScarPropagationModel, corrupt_scar, masked_bce_dice_loss
@@ -42,3 +43,22 @@ def test_propagation_model_forward_and_backward() -> None:
 
     has_grad = any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.parameters())
     assert has_grad
+
+
+def test_masked_loss_derives_pos_weight_from_batch_imbalance() -> None:
+    """El peso positivo se deriva del desbalance real del lote."""
+    logits = torch.zeros(1, 1, 10, 10)
+    target = torch.zeros(1, 1, 10, 10)
+    mask = torch.ones(1, 1, 10, 10, dtype=torch.uint8)
+
+    # 10% de píxeles quemados (una columna de 10 sobre 100) -> pos_weight ~ 9
+    target[:, :, :, 0] = 1.0
+    loss_auto = masked_bce_dice_loss(logits, target, mask)
+    loss_manual = masked_bce_dice_loss(logits, target, mask, pos_weight=9.0)
+    assert torch.isfinite(loss_auto)
+    assert float(loss_auto) == pytest.approx(float(loss_manual), abs=1e-5)
+
+    # Una sobrescritura explícita se respeta
+    loss_w = masked_bce_dice_loss(logits, target, mask, pos_weight=1.0)
+    assert float(loss_w) != pytest.approx(float(loss_auto), abs=1e-5)
+
