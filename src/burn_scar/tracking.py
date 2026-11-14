@@ -204,6 +204,26 @@ class ExperimentTracker:
         if should_flush:
             self.flush()
 
+    def log_image(
+        self,
+        tag: str,
+        img_tensor: torch.Tensor | Any,
+        global_step: int | None = None,
+        *,
+        dataformats: str = "CHW",
+        flush: bool | None = None,
+    ) -> None:
+        """Registra una imagen en TensorBoard (pestaña IMAGES) y sincroniza a disco/NFS."""
+        self.writer.add_image(
+            tag,
+            img_tensor,
+            global_step=global_step,
+            dataformats=dataformats,
+        )
+        should_flush = self.flush_always if flush is None else flush
+        if should_flush:
+            self.flush()
+
     def save_checkpoint(self, state: Any, filename: str = "checkpoint.pt") -> Path:
         """Guarda un diccionario de pesos/estado en la carpeta aislada del experimento."""
         target = self.checkpoint_dir / filename
