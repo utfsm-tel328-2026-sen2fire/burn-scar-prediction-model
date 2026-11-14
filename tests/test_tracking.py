@@ -169,3 +169,30 @@ def test_concurrent_researchers_shared_tracking(tmp_path: Path) -> None:
     assert ckpt_a.is_file()
     assert ckpt_b.is_file()
     assert ckpt_a.resolve() != ckpt_b.resolve()
+
+
+def test_log_image_writes_and_flushes(tmp_path: Path) -> None:
+    storage = resolve_storage_paths(
+        env_file=tmp_path / "none.env",
+        env_overrides={"BURNSCAR_SHARED_STORAGE": "", "BURNSCAR_USER": "antonio"},
+        fallback_root=tmp_path / "local",
+    )
+    img = torch.rand(3, 16, 16, dtype=torch.float32)
+
+    with ExperimentTracker("vis_test", timestamp="20261114_170000", storage=storage) as tracker:
+        flush_calls = 0
+        orig_flush = tracker.flush
+
+        def counted_flush() -> None:
+            nonlocal flush_calls
+            flush_calls += 1
+            orig_flush()
+
+        tracker.flush = counted_flush  # type: ignore[method-assign]
+        tracker.log_image("fold_0/sample_0", img, global_step=1)
+        assert flush_calls == 1
+
+    events = list(tracker.run_dir.glob("events.out.tfevents.*"))
+    assert len(events) >= 1
+    assert events[0].stat().st_size > 100
+
