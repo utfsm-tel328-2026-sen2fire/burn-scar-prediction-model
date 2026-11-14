@@ -147,7 +147,10 @@ import torch
 from burn_scar.dataset import get_cv_dataloaders
 
 # Configurar Validación Cruzada (entrena en folds 1..4 y valida en fold 0)
-train_loader, val_loader = get_cv_dataloaders(val_fold=0, batch_size=8, num_workers=2)
+# num_workers=None resuelve según el backend: 0 en ROCm (AMD), 2 en CUDA.
+# Ver docs/operacion.md §8: con procesos auxiliares en AMD la época tarda 74 s
+# en lugar de 1,7 s.
+train_loader, val_loader = get_cv_dataloaders(val_fold=0, batch_size=8)
 
 for batch in train_loader:
     x_olci = batch["x_olci"].cuda()       # (8, 7, 5, 64, 64)
@@ -223,6 +226,6 @@ uv run python scripts/build_pytorch_dataset.py
 # 7. Ejecutar evaluación de los baselines de referencia
 uv run python scripts/evaluate_baselines.py
 
-# 8. Entrenar el modelo de propagación (≈2 h; usar nohup/tmux)
+# 8. Entrenar el modelo de propagación (≈4 min; usar nohup/tmux si crece)
 uv run python scripts/train_propagation.py --epochs 15 --tag prop_v2
 ```

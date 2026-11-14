@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define los requisitos de construcción del dataset de propagación de cicatrices: generación de la cicatriz conocida a partir del checkpoint congelado de TMB-S3, composición de la ventana temporal multi-frame con adquisición pre-incendio, filtrado de adquisiciones no utilizables, tratamiento de los píxeles sin dato y semántica del target de nuevo quemado.
+Define los requisitos de construcción del dataset de propagación de cicatrices: generación de la cicatriz conocida a partir del checkpoint congelado de TMB-S3, composición de la ventana temporal multi-frame con adquisición pre-incendio, filtrado de adquisiciones no utilizables, tratamiento de los píxeles sin dato, semántica del target de nuevo quemado y carga de las muestras adaptada al backend de cómputo.
 
 ## ADDED Requirements
 
@@ -64,3 +64,18 @@ El sistema SHALL definir el target de propagación como el área quemada nueva e
 #### Scenario: El target es cero cuando no hay crecimiento
 - **WHEN** la cicatriz estimada en el frame actual cubre ya el polígono de la ronda objetivo
 - **THEN** el target de esa muestra es cero en todos sus píxeles, sin valores negativos
+
+### Requirement: Sample loading adapted to the compute backend
+El sistema SHALL resolver la configuración del cargador de muestras de entrenamiento según el backend de GPU disponible, y SHALL NOT pagar un coste de carga de datos multiplicativo por el uso de procesos auxiliares cuando ese backend no lo tolera, de modo que el tiempo de una época de entrenamiento refleje el coste de cómputo del modelo.
+
+#### Scenario: En ROCm la carga se hace en el proceso principal
+- **WHEN** se construye el cargador de muestras de entrenamiento en un entorno con ROCm (AMD)
+- **THEN** el cargador se crea sin procesos auxiliares y sin memoria fijada
+
+#### Scenario: La configuración se puede forzar explícitamente
+- **WHEN** el llamante proporciona un número de procesos auxiliares o un modo de memoria fijada
+- **THEN** el cargador usa esos valores en lugar de los resueltos automáticamente
+
+#### Scenario: La carga de datos no domina el tiempo de la época
+- **WHEN** se mide el tiempo de una época de entrenamiento con la configuración automática y se compara con el de la misma época usando procesos auxiliares
+- **THEN** la configuración automática no es más lenta que la variante con procesos auxiliares

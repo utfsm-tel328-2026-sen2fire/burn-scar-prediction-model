@@ -37,7 +37,16 @@
 - [x] 6.1 Actualizar `docs/refinamiento_documentacion.md` para reflectar que la cicatriz se genera con el canal 0 (logit de quemado) de TMB-S3, que la ventana temporal es 1 frame pre-incendio + 6 post-incendio con filtrado de adquisiciones, y que los targets vacíos se reportan como NaN en vez de 1,0.
 - [x] 6.2 Documentar en `docs/operacion.md` el procedimiento de regeneración del dataset (obligatorio antes de entrenar) y el uso de `nohup` para runs largos, incluyendo la nota de que el dataset no se versiona en Git.
 
+## 7. Rendimiento de la carga de datos
+
+- [x] 7.1 En `src/burn_scar/dataset.py`, añadir una función que resuelva `(num_workers, pin_memory)` según el backend (ROCm: 0 procesos auxiliares y sin memoria fijada; CUDA: 2 procesos auxiliares y memoria fijada) y usarla en `get_cv_dataloaders`. Verificar que en ROCm la época de entrenamiento baja de 74 s a menos de 2 s con el dataset completo.
+- [x] 7.2 En `scripts/train_propagation.py`, permitir forzar la configuración con `--num-workers` y `--pin-memory`/`--no-pin-memory`, y aplicarla también al cargador de evaluación sobre el conjunto de test. Verificar que el entrenamiento completo (15 épocas × 5 folds) baja de ~2 h a menos de 3 min.
+- [x] 7.3 En `src/burn_scar/models/propagation.py`, vectorizar la corrupción de la cicatriz para eliminar una sincronización de GPU por muestra del lote, conservando la decisión morfológica única por muestra. Verificar con una prueba unitaria que la corrupción conserva el rango [0,1] y no mezcla muestras.
+- [x] 7.4 Documentar en `docs/operacion.md` la trampa del cargador de muestras en ROCm con la tabla de tiempos medidos y la forma de forzar la configuración.
+
 ## Workflow follow-up
 
 - Regenerar el dataset y reentrenar la red con el dataset corregido; comparar el F1 obtenido contra los baselines B0/B1 y el umbral óptimo reportado.
 - Archivar el cambio cuando los resultados del primer entrenamiento con el dataset corregido estén revisados por el equipo.
+
+**Estado**: el primer entrenamiento completo con el dataset corregido ya se ejecutó (15 épocas × 5 folds, 131 s): F1 en CV 23,18% ± 8,33%, F1 en test (fold -1, umbral congelado 0,10) 33,80%, IoU 23,27%, recall 86,25%, frente a un baseline B1 de 10,80% de F1. Queda pendiente la revisión del equipo y el archivado del cambio.
