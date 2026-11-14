@@ -17,6 +17,19 @@ def test_corrupt_scar_bounds_and_shape() -> None:
     assert corrupted.max() <= 1.0
 
 
+def test_corrupt_scar_es_vectorizado_por_muestra() -> None:
+    """La dilatación/erosión se decide por muestra sin sincronizar la GPU."""
+    scar = torch.zeros(4, 1, 32, 32)
+    scar[:, :, 10:20, 10:20] = 1.0
+    torch.manual_seed(0)
+    corrupted = corrupt_scar(scar, drop_prob=0.0)
+    # Cada muestra se dilata o se erosiona, pero nunca se mezclan entre muestras.
+    for i in range(4):
+        sample = corrupted[i]
+        assert torch.isin(sample, torch.tensor([0.0, 1.0])).all()
+        assert sample.sum() > 0
+
+
 def test_propagation_model_forward_and_backward() -> None:
     model = BurnScarPropagationModel(olci_channels=5, hidden_ch=16, scar_corruption_prob=0.15)
     model.train()

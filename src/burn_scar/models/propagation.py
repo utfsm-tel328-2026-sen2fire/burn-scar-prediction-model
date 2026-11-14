@@ -33,14 +33,12 @@ def corrupt_scar(x_scar: Tensor, drop_prob: float = 0.15) -> Tensor:
     keep_mask = (torch.rand_like(out) >= drop_prob).to(out.dtype)
     out = out * keep_mask
 
-    # 2. Dilatación (50%) o erosión (50%) de 1 píxel por muestra en el batch
-    B = out.shape[0]
-    for i in range(B):
-        patch = out[i : i + 1]
-        if torch.rand(1, device=out.device).item() < 0.5:
-            out[i : i + 1] = F.max_pool2d(patch, kernel_size=3, stride=1, padding=1)
-        else:
-            out[i : i + 1] = -F.max_pool2d(-patch, kernel_size=3, stride=1, padding=1)
+    # 2. Dilatación (50%) o erosión (50%) de 1 píxel, decided en una sola
+    #    tirada para no sincronizar la GPU una vez por muestra del lote.
+    dilate = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
+    erode = -F.max_pool2d(-out, kernel_size=3, stride=1, padding=1)
+    use_dilate = torch.rand(out.shape[0], 1, 1, 1, device=out.device) < 0.5
+    out = torch.where(use_dilate, dilate, erode)
 
     return out.clamp(0.0, 1.0)
 
