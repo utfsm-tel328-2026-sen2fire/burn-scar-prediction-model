@@ -13,8 +13,8 @@ checkpoints/
 .devenv/
 
 # Datos, artefactos y datasets
-data/
-models/
+/data/
+/models/
 
 # Extensiones de archivos binarios y datos pesados
 *.npz
