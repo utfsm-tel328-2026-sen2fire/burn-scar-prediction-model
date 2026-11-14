@@ -28,6 +28,18 @@ import numpy as np
 import torch
 from burn_scar.models import load_tmb_s3, predict_burn_scar
 
+# Una adquisición con más de este porcentaje de píxeles sin dato se descarta
+# (mismo criterio que la ficha del dataset TMB-S3 upstream).
+MAX_NODATA_FRAC = 0.20
+
+# Longitud de la ventana temporal: 1 frame pre-incendio + 6 post-incendio (BL1)
+WINDOW_LEN = 7
+
+
+def _frame_key(iso_timestamp: str) -> str:
+    """'2026-09-12T15:47:00' -> '20260912T154700' (mismo formato que las claves de frame)."""
+    return iso_timestamp.replace("-", "").replace(":", "")[:15]
+
 
 def assign_geographic_folds(series_list: list[dict]) -> dict[str, int]:
     """Asigna cada serie a uno de los 5 folds geográficos (D8, D14, BL6)."""
@@ -131,17 +143,37 @@ def main() -> int:
         dem = static_npz["dem"].astype(np.float32)  # (64, 64)
         worldcover = static_npz["worldcover"].astype(np.float32)  # (64, 64)
 
-        # Cargar todos los frames OLCI disponibles de la serie
+        # Cargar los frames OLCI de la serie y descartar los no utilizables:
+        # - más de un 20% de píxeles sin dato (borde del swath)
+        # - sin ninguna señal válida (adquisiciones nocturnas)
         olci_frame_files = sorted(glob.glob(f"data/raw/s3_olci/{sid}/*.npz"))
         if not olci_frame_files:
             continue
 
-        olci_frames_map = {}
+        frame_cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
         for fpath in olci_frame_files:
             fname = os.path.splitext(os.path.basename(fpath))[0]
-            olci_frames_map[fname] = fpath
+            raw_bands = np.load(fpath)["olci_bands"]
+            b5 = raw_bands[[3, 5, 7, 16, 20]] if raw_bands.shape[0] == 22 else raw_bands[:5]
+            b5 = b5.astype(np.float32)
+            valid = (b5 > 0) & (b5 < 32768)
+            fill_frac = float((~valid).mean())
+            has_signal = bool(valid.any()) and float(b5[valid].max()) > 0.0
+            if fill_frac > MAX_NODATA_FRAC or not has_signal:
+                continue
+            frame_cache[fname] = (b5, valid)
 
-        sorted_frame_keys = sorted(olci_frames_map.keys())
+        sorted_frame_keys = sorted(frame_cache.keys())
+        if not sorted_frame_keys:
+            continue
+
+        # Corte pre-incendio: hora de adquisición de la primera ronda CEMS de la serie
+        rounds_meta = cems_s.get("rounds", [])
+        acq_times = [
+            str(r.get("acquisition_time")) for r in rounds_meta if r.get("acquisition_time")
+        ]
+        pre_fire_cut = min((_frame_key(t) for t in acq_times), default="")
+        pre_fire_keys = [k for k in sorted_frame_keys if k < pre_fire_cut]
 
         series_samples_count = 0
         for smp in samples:
@@ -160,31 +192,29 @@ def main() -> int:
             f_dt = dt.datetime.fromisoformat(frame_iso.replace("Z", ""))
             f_key = f_dt.strftime("%Y%m%dT%H%M%S")
 
-            # Identificar hasta 6 frames pasados + 1 frame pre-incendio (BL1)
+            # Ventana temporal: 1 frame pre-incendio + hasta 6 post-incendio (BL1).
+            # El frame pre-incendio es la adquisición utilizable más reciente anterior
+            # a la primera ronda CEMS; el resto son post-incendios que terminan en f.
             past_keys = [k for k in sorted_frame_keys if k <= f_key]
             if not past_keys:
                 continue
 
-            # Tomar los últimos 7 frames (o rellenar el inicio si hay menos)
-            selected_keys = past_keys[-7:]
-            while len(selected_keys) < 7:
+            post_keys = [k for k in past_keys if k >= pre_fire_cut] or past_keys
+            pre_key = pre_fire_keys[-1] if (pre_fire_keys and pre_fire_keys[-1] <= f_key) else None
+
+            if pre_key:
+                selected_keys = [pre_key] + post_keys[-(WINDOW_LEN - 1):]
+            else:
+                selected_keys = past_keys[-WINDOW_LEN:]
+            while len(selected_keys) < WINDOW_LEN:
                 selected_keys.insert(0, selected_keys[0])
 
             # Cargar los 7 frames (5 bandas cada uno)
-            olci_seq = []
-            for k in selected_keys:
-                frame_data = np.load(olci_frames_map[k])
-                raw_bands = frame_data["olci_bands"]  # (22, 64, 64) o (5, 64, 64)
-                if raw_bands.shape[0] == 22:
-                    b5 = raw_bands[[3, 5, 7, 16, 20]]
-                else:
-                    b5 = raw_bands[:5]
-                olci_seq.append(b5.astype(np.float32))
+            olci_tensor = np.stack([frame_cache[k][0] for k in selected_keys], axis=0)
+            olci_valid_mask = np.stack([frame_cache[k][1] for k in selected_keys], axis=0)
 
             # Tensor OLCI shape: (7, 5, 64, 64) en orden [Oa04, Oa06, Oa08, Oa17, Oa21]
-            olci_tensor = np.stack(olci_seq, axis=0)
             # Limpiar nodata/fill de GEE OLCI (>= 32768 o <= 0)
-            olci_valid_mask = (olci_tensor > 0) & (olci_tensor < 32768)
             olci_clean = np.where(olci_valid_mask, olci_tensor, np.nan)
 
             # 3. Inferencia de TMB-S3 para obtener la cicatriz actual scar(f)
@@ -215,8 +245,18 @@ def main() -> int:
             # La cicatriz de entrada en el frame actual f es el último frame de la secuencia
             scar_f = scar_probs[-1]  # (64, 64) en [0..1]
 
-            # Guardar OLCI limpio (sin 32768) para el modelo de propagación
-            olci_tensor = np.where(olci_valid_mask, olci_tensor, 0.0).astype(np.float32)
+            # Guardar OLCI sin el centinela de nodata: cada píxel sin dato se
+            # sustituye por la media de su banda en el frame (valor neutro; el 0
+            # introduciría un sesgo hacia "quemado" en las bandas visibles).
+            olci_stored = olci_tensor.copy()
+            for t in range(olci_stored.shape[0]):
+                for b in range(olci_stored.shape[1]):
+                    band = olci_stored[t, b]
+                    band_valid = olci_valid_mask[t, b]
+                    if band_valid.any():
+                        band[~band_valid] = float(band[band_valid].mean())
+                    else:
+                        band[:] = 0.0
 
             # 4. Target de propagación: lo NUEVO quemado en (f, f+h] (D9)
             # Target = clip(poligono(r+1) - scar_TMB3(f), 0, 1)
@@ -226,7 +266,7 @@ def main() -> int:
             sample_file = os.path.join(args.samples_out, f"{sample_id}.npz")
             np.savez_compressed(
                 sample_file,
-                x_olci=olci_tensor.astype(np.float16),
+                x_olci=olci_stored.astype(np.float16),
                 x_dem=dem.astype(np.float32),
                 x_worldcover=worldcover.astype(np.uint8),
                 x_scar=scar_f.astype(np.float16),
@@ -242,6 +282,7 @@ def main() -> int:
                 "file": sample_file,
                 "fold": fold_id,
                 "horizon_days": horizon_days,
+                "frame_keys": selected_keys,
                 "sensor_changed": smp.get("sensor_changed", False),
                 "geo_mediterranean": s_meta.get("geo_mediterranean", True),
                 "in_tmb_test": s_meta.get("in_tmb_test", False),
