@@ -153,3 +153,43 @@ TK_Stratego/Shared/burn_scar/
 Cuando ambos entrenen, al abrir **http://localhost:6006**:
 * **Filtros por usuario**: En la esquina superior izquierda del panel de TensorBoard, puedes escribir `antonio` para ver solo tus experimentos, `companero` para ver los de tu colega, o dejarlos ambos para comparar cómo evolucionan las curvas superpuestas.
 * **Descarga de checkpoints**: Como los checkpoints se guardan en el NFS bajo la misma estructura, si tu compañero entrenó un modelo, puedes cargarlo directamente desde tu máquina leyendo su ruta de checkpoint.
+
+---
+
+## 6. Inspección Visual de Predicciones por Checkpoint (Pestaña IMAGES)
+
+Para evaluar un checkpoint ya entrenado (`best_fold_*.pt`) sobre su split de validación correspondiente y visualizar los resultados espaciales en el apartado **IMAGES** de TensorBoard, utiliza `scripts/visualize_predictions.py`:
+
+```bash
+# Ver las N mejores y N peores predicciones del fold (modo por defecto: --mode both)
+uv run --extra cuda python scripts/visualize_predictions.py \
+  --checkpoint checkpoints/<run_namespace>/best_fold_0.pt \
+  --mode both \
+  --n-samples 6
+```
+
+### Modos de selección disponibles (`--mode`)
+* `--mode both` *(por defecto)*: registra las `N` mejores y las `N` peores muestras según su F1 por muestra.
+* `--mode best` / `--mode worst`: registra únicamente las `N` mejores o las `N` peores.
+* `--mode series --series-id <ID>`: filtra todas las muestras de un incendio/evento específico en ese fold.
+* `--mode indices --indices 0 5 12`: inspecciona índices puntuales del split de validación.
+* `--mode random --n-samples 8`: muestreo aleatorio reproducible (`--seed`).
+
+### Qué muestra cada panel horizontal (5 bloques)
+1. **OLCI pseudo-RGB**: último frame espectral de entrada (`x_olci[-1]`).
+2. **`x_scar`**: cicatriz previa conocida en el instante $f$ (azul acero).
+3. **`target`**: nueva área quemada real en $(f, f+h]$ (verde brillante; gris atenuado donde `mask == 255`).
+4. **Probabilidad**: mapa continuo $\sigma(\text{logits}) \in [0, 1]$ (mapa de calor).
+5. **Overlay TP/FP/FN**: azul = `x_scar`, verde = acierto (`TP`), rojo = falsa alarma (`FP`), amarillo = omisión (`FN`), gris = ignorado (`mask == 255`).
+
+### Cómo guardar/exportar las imágenes
+1. **Desde la propia página de TensorBoard**: en la pestaña **IMAGES**, haz clic derecho sobre cualquier panel y selecciona *"Guardar imagen como..."* (o activa *"Show actual image size"* en el panel superior para descargarla a resolución completa escalada por `--scale`).
+2. **Exportación directa en lote a PNG**: agrega `--save-dir <carpeta>` al comando para guardar automáticamente todos los paneles generados como archivos `.png` listos para informes:
+   ```bash
+   uv run --extra cuda python scripts/visualize_predictions.py \
+     --checkpoint checkpoints/<run_namespace>/best_fold_0.pt \
+     --mode both \
+     --n-samples 6 \
+     --save-dir runs/exported_panels_fold0
+   ```
+
