@@ -228,7 +228,7 @@ uv run --extra rocm python scripts/build_pytorch_dataset.py
 # 2. Fijar la referencia de comparación (baselines B0/B1 sobre el dataset nuevo)
 uv run --extra rocm python scripts/evaluate_baselines.py
 
-# 3. Entrenar (≈85 s por época y fold → ~2 h para 15 épocas × 5 folds)
+# 3. Entrenar (≈2 s por época y fold → ~4 min para 15 épocas × 5 folds)
 nohup uv run --extra rocm python scripts/train_propagation.py \
       --epochs 15 --tag prop_v2 > runs/prop_v2.log 2>&1 &
 ```
@@ -237,9 +237,30 @@ nohup uv run --extra rocm python scripts/train_propagation.py \
 horneados dentro de los `.npz` de cada muestra: cambiar el generador sin regenerar deja
 el dataset viejo en disco y el entrenamiento sigue usando el anterior.
 
+### En AMD (ROCm), el DataLoader es el problema, no la GPU
+
+Medido en la RX 6800 XT (gfx1030, ROCm 6.4) con este dataset:
+
+| DataLoader | train/época | validación |
+|---|---|---|
+| `num_workers=2` + `pin_memory=True` (lo que había) | 74 s | 12 s |
+| `num_workers=2`, sin `pin_memory` | 82 s | 9 s |
+| `num_workers=0` | **1,7 s** | **0,07 s** |
+
+Los workers se bifurcan (`fork`) desde un proceso que ya tiene el contexto HIP
+inicializado, y esa bifurcación cuesta decenas de segundos. Con `pin_memory` encima,
+cada lote reserva memoria fijada con `hipHostMalloc`, que en ROCm es carísimo.
+
+**La GPU nunca fue el problema**: el modelo son 780 k parámetros y son 32 ms por lote.
+El script detecta el backend y usa `num_workers=0` en ROCm, `2` en CUDA. Se puede
+forzar con `--num-workers N` y `--pin-memory` / `--no-pin-memory`.
+
+Si algún día el dataset crece mucho (miles de muestras), el diagnosis cambia: ahí sí
+compensa pagar la carga en paralelo, y conviene medir antes de asumir.
+
 ### Runs largos
 
-El entrenamiento completo son ~2 h: lánzalo con `nohup` (o `tmux`) y vigila el log.
+El entrenamiento completo son ~4 min: lánzalo con `nohup` (o `tmux`) y vigila el log.
 Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el proceso.
 
 ### Cómo leer los números
