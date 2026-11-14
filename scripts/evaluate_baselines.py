@@ -20,6 +20,7 @@ from burn_scar.dataset import BurnScarDataset
 from burn_scar.baselines import (
     BaselineB0Persistence,
     BaselineB1RadialDilation,
+    aggregate_series_metrics,
     compute_metrics_numpy,
 )
 
@@ -42,27 +43,19 @@ def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str
         m = compute_metrics_numpy(pred, target, mask, threshold=0.5)
         series_metrics[series_id].append(m)
 
-    # Promedio por serie primero (D10: un evento = una serie)
-    f1_per_series = []
-    iou_per_series = []
-    prec_per_series = []
-    rec_per_series = []
-
-    for sid, m_list in series_metrics.items():
-        f1_per_series.append(np.mean([m["f1"] for m in m_list]))
-        iou_per_series.append(np.mean([m["iou"] for m in m_list]))
-        prec_per_series.append(np.mean([m["precision"] for m in m_list]))
-        rec_per_series.append(np.mean([m["recall"] for m in m_list]))
+    # Promedio por serie primero (D10: un evento = una serie), ignorando NaN
+    agg = aggregate_series_metrics(series_metrics)
 
     return {
         "model": model_name,
-        "n_series": len(series_metrics),
+        "n_series": agg["n_series_total"],
+        "n_series_evaluated": agg["n_series_evaluated"],
         "n_samples": len(dataset),
-        "f1_event_mean": float(np.mean(f1_per_series)),
-        "f1_event_std": float(np.std(f1_per_series)),
-        "iou_event_mean": float(np.mean(iou_per_series)),
-        "precision_mean": float(np.mean(prec_per_series)),
-        "recall_mean": float(np.mean(rec_per_series)),
+        "f1_event_mean": agg["f1_event_mean"],
+        "f1_event_std": agg["f1_event_std"],
+        "iou_event_mean": agg["iou_event_mean"],
+        "precision_mean": agg["precision_event_mean"],
+        "recall_mean": agg["recall_event_mean"],
     }
 
 
@@ -87,7 +80,8 @@ def main() -> int:
     for model, name in models:
         res = evaluate_model(dataset_med, model, name)
         print(f"\nResultados: {name}")
-        print(f"  Series evaluadas:  {res['n_series']} ({res['n_samples']} muestras)")
+        print(f"  Series evaluadas:  {res['n_series_evaluated']}/{res['n_series']} "
+              f"({res['n_samples']} muestras)")
         print(f"  F1 (Macro-evento): {res['f1_event_mean'] * 100:.2f}% ± {res['f1_event_std'] * 100:.2f}%")
         print(f"  IoU (Jaccard):     {res['iou_event_mean'] * 100:.2f}%")
         print(f"  Precisión:         {res['precision_mean'] * 100:.2f}%")

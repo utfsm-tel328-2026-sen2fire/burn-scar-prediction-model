@@ -3,6 +3,7 @@ import pytest
 from burn_scar.baselines import (
     BaselineB0Persistence,
     BaselineB1RadialDilation,
+    aggregate_series_metrics,
     compute_metrics_numpy,
 )
 
@@ -45,3 +46,37 @@ def test_compute_metrics():
     assert metrics["iou"] == 1.0
     assert metrics["precision"] == 1.0
     assert metrics["recall"] == 1.0
+
+
+def test_metrics_are_nan_when_target_has_no_burn():
+    """Sin quemado en la verdad las métricas no son informativas: NaN, no 1.0."""
+    pred = np.zeros((64, 64), dtype=np.float32)
+    target = np.zeros((64, 64), dtype=np.float32)
+    mask = np.ones((64, 64), dtype=np.uint8)
+
+    metrics = compute_metrics_numpy(pred, target, mask, threshold=0.5)
+
+    assert np.isnan(metrics["f1"])
+    assert np.isnan(metrics["iou"])
+    assert np.isnan(metrics["precision"])
+    assert np.isnan(metrics["recall"])
+    assert metrics["n_positives"] == 0
+
+
+def test_aggregate_series_metrics_ignores_nan():
+    """El agregado por evento ignora las muestras no informativas y las cuenta."""
+    vacio = compute_metrics_numpy(
+        np.zeros((8, 8), np.float32), np.zeros((8, 8), np.float32),
+        np.ones((8, 8), np.uint8),
+    )
+    con_quemado = compute_metrics_numpy(
+        np.ones((8, 8), np.float32), np.ones((8, 8), np.float32),
+        np.ones((8, 8), np.uint8),
+    )
+
+    agg = aggregate_series_metrics({"serie_a": [vacio, con_quemado], "serie_b": [vacio]})
+
+    assert agg["n_series_evaluated"] == 1
+    assert agg["n_series_total"] == 2
+    assert agg["f1_event_mean"] == 1.0
+

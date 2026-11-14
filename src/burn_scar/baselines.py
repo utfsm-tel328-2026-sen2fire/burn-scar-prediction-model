@@ -28,31 +28,84 @@ def compute_metrics_numpy(
     pred:   array continuo o de probabilidades en [0..1]
     target: array de valores en [0..1] (lo nuevo quemado)
     mask:   array de validez (1 = válido, 255 = ignorar)
+
+    Si la verdad no contiene ningún píxel quemado (target >= threshold), las
+    métricas binarias no son informativas: un modelo que predice "nada" obtendría
+    un 1.0 artificial. En ese caso se devuelven NaN.
     """
     # Filtrar solo píxeles válidos
     valid_idx = (mask == 1)
-    if not np.any(valid_idx):
-        return {"f1": 0.0, "iou": 0.0, "precision": 0.0, "recall": 0.0, "valid_pixels": 0}
+    n_valid = int(valid_idx.sum())
+    if n_valid == 0:
+        return _nan_metrics(0, 0)
 
     y_pred = (pred[valid_idx] >= threshold).astype(bool)
     y_true = (target[valid_idx] >= threshold).astype(bool)
+    n_pos = int(y_true.sum())
+
+    if n_pos == 0:
+        return _nan_metrics(n_valid, 0)
 
     tp = np.logical_and(y_pred, y_true).sum()
     fp = np.logical_and(y_pred, ~y_true).sum()
     fn = np.logical_and(~y_pred, y_true).sum()
 
-    precision = tp / (tp + fp) if (tp + fp) > 0 else (1.0 if y_true.sum() == 0 else 0.0)
-    recall = tp / (tp + fn) if (tp + fn) > 0 else (1.0 if y_true.sum() == 0 else 0.0)
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-    iou = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else (1.0 if y_true.sum() == 0 else 0.0)
+    iou = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else 0.0
 
     return {
         "f1": float(f1),
         "iou": float(iou),
         "precision": float(precision),
         "recall": float(recall),
-        "valid_pixels": int(valid_idx.sum()),
+        "valid_pixels": n_valid,
+        "n_positives": n_pos,
     }
+
+
+def _nan_metrics(n_valid: int, n_pos: int) -> dict[str, float]:
+    """Métricas no informativas (la verdad no tiene quemado o no hay píxeles válidos)."""
+    nan = float("nan")
+    return {
+        "f1": nan,
+        "iou": nan,
+        "precision": nan,
+        "recall": nan,
+        "valid_pixels": int(n_valid),
+        "n_positives": int(n_pos),
+    }
+
+
+def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) -> dict[str, float]:
+    """
+    Promedio por serie/evento (D10) ignorando las métricas no informativas (NaN).
+
+    Devuelve además cuántas series han podido evaluarse, para detectar el caso
+    degenerado en el que el target no contiene quemado (métricas sin sentido).
+    """
+    keys = ("f1", "iou", "precision", "recall")
+    per_series: dict[str, list[float]] = {k: [] for k in keys}
+
+    for m_list in series_metrics.values():
+        for k in keys:
+            vals = np.array([m[k] for m in m_list], dtype=float)
+            vals = vals[~np.isnan(vals)]
+            if vals.size:
+                per_series[k].append(float(vals.mean()))
+
+    out = {
+        f"{k}_event_mean": (float(np.mean(v)) if v else float("nan"))
+        for k, v in per_series.items()
+    }
+    out["f1_event_std"] = (
+        float(np.std(per_series["f1"])) if per_series["f1"] else float("nan")
+    )
+    out["n_series_evaluated"] = len(per_series["f1"])
+    out["n_series_total"] = len(series_metrics)
+    return out
+
 
 
 class BaselineB0Persistence:
