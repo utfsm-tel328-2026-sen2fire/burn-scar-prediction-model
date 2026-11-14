@@ -6,6 +6,7 @@ propagación ConvLSTM + SegFormer (docs/operacion.md §4, docs/dataset.md §10).
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from collections import defaultdict
@@ -15,11 +16,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import torch
+from torch.utils.data import DataLoader
 
-from burn_scar.baselines import compute_metrics_numpy
-from burn_scar.dataset import get_cv_dataloaders
+from burn_scar.baselines import aggregate_series_metrics, compute_metrics_numpy
+from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders
 from burn_scar.models import BurnScarPropagationModel, masked_bce_dice_loss
 from burn_scar.tracking import ExperimentTracker
+
+# Umbrales evaluados en validación: un modelo probabilístico desbalanceado
+# raramente opera en 0,5, y los baselines B0/B1 no tienen umbral (son binarios).
+EVAL_THRESHOLDS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+DEFAULT_THRESHOLD = 0.5
+
+# Fold de test: series fuera de dominio (no mediterráneas), nunca visto en
+# validación ni en la elección del umbral.
+TEST_FOLD = -1
 
 
 @torch.no_grad()
@@ -27,13 +38,16 @@ def evaluate_fold(
     model: BurnScarPropagationModel,
     val_loader: torch.utils.data.DataLoader,
     device: str,
-    threshold: float = 0.5,
+    threshold: float = DEFAULT_THRESHOLD,
 ) -> dict[str, float]:
     """Evalúa un fold promediando métricas por serie/evento (D10)."""
     model.eval()
     total_loss = 0.0
     n_batches = 0
-    series_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
+    # Métricas por serie y por umbral (ignora NaN: targets sin quemado)
+    series_metrics: dict[str, dict[float, list[dict[str, float]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
 
     for batch in val_loader:
         x_olci = batch["x_olci"].to(device)
@@ -55,21 +69,119 @@ def evaluate_fold(
         series_ids = batch["meta"]["series_id"]
 
         for i, sid in enumerate(series_ids):
-            m = compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=threshold)
-            series_metrics[sid].append(m)
+            for th in EVAL_THRESHOLDS:
+                m = compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=th)
+                series_metrics[sid][th].append(m)
 
-    f1_series = [np.mean([m["f1"] for m in ms]) for ms in series_metrics.values()]
-    iou_series = [np.mean([m["iou"] for m in ms]) for ms in series_metrics.values()]
-    prec_series = [np.mean([m["precision"] for m in ms]) for ms in series_metrics.values()]
-    rec_series = [np.mean([m["recall"] for m in ms]) for ms in series_metrics.values()]
+    # Agregado por serie para cada umbral
+    per_threshold = {
+        th: aggregate_series_metrics({sid: ms[th] for sid, ms in series_metrics.items()})
+        for th in EVAL_THRESHOLDS
+    }
+    at_default = per_threshold[threshold]
+    best_th = max(
+        EVAL_THRESHOLDS,
+        key=lambda th: (
+            per_threshold[th]["f1_event_mean"]
+            if not np.isnan(per_threshold[th]["f1_event_mean"])
+            else -1.0
+        ),
+    )
+    at_best = per_threshold[best_th]
 
     return {
         "val_loss": total_loss / max(1, n_batches),
-        "f1_event": float(np.mean(f1_series)) if f1_series else 0.0,
-        "iou_event": float(np.mean(iou_series)) if iou_series else 0.0,
-        "precision": float(np.mean(prec_series)) if prec_series else 0.0,
-        "recall": float(np.mean(rec_series)) if rec_series else 0.0,
-        "n_series": len(series_metrics),
+        "f1_event": at_default["f1_event_mean"],
+        "iou_event": at_default["iou_event_mean"],
+        "precision": at_default["precision_event_mean"],
+        "recall": at_default["recall_event_mean"],
+        "f1_event_best": at_best["f1_event_mean"],
+        "best_threshold": float(best_th),
+        "n_series": at_default["n_series_total"],
+        "n_series_evaluated": at_default["n_series_evaluated"],
+        # Métricas por umbral, para poder evaluar con un umbral ya congelado
+        "per_threshold": {
+            th: {
+                "f1": per_threshold[th]["f1_event_mean"],
+                "iou": per_threshold[th]["iou_event_mean"],
+                "precision": per_threshold[th]["precision_event_mean"],
+                "recall": per_threshold[th]["recall_event_mean"],
+                "n_series_evaluated": per_threshold[th]["n_series_evaluated"],
+            }
+            for th in EVAL_THRESHOLDS
+        },
+    }
+
+
+def evaluate_checkpoint_on_test(
+    checkpoint_path: Path,
+    index_path: str,
+    device: str,
+    threshold: float,
+    batch_size: int = 8,
+    num_workers: int = 2,
+) -> dict[str, float]:
+    """
+    Evalúa un checkpoint sobre el conjunto de test (fold -1) con un umbral ya
+    congelado. El test no ha participado en la elección del checkpoint ni del
+    umbral, por lo que sus métricas son el número publicable.
+    """
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    model = BurnScarPropagationModel(**ckpt["model_config"]).to(device)
+    model.load_state_dict(ckpt["model_state_dict"])
+
+    dataset = BurnScarDataset(index_path=index_path, folds=[TEST_FOLD])
+    if len(dataset) == 0:
+        return {}
+
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=torch.cuda.is_available(),
+    )
+    res = evaluate_fold(model, loader, device=device)
+    metrics = res["per_threshold"].get(threshold)
+    if metrics is None:
+        # El umbral congelado puede no estar en la rejilla: se evalúa aparte
+        metrics = _metrics_at_threshold(model, loader, device, threshold)
+    return metrics
+
+
+@torch.no_grad()
+def _metrics_at_threshold(
+    model: BurnScarPropagationModel,
+    loader: torch.utils.data.DataLoader,
+    device: str,
+    threshold: float,
+) -> dict[str, float]:
+    """Métricas agregadas por evento con un umbral arbitrario."""
+    model.eval()
+    series_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
+
+    for batch in loader:
+        logits = model(
+            batch["x_olci"].to(device),
+            batch["x_dem"].to(device),
+            batch["x_worldcover"].to(device),
+            batch["x_scar"].to(device),
+            batch["horizon_days"].to(device),
+        )
+        probs = torch.sigmoid(logits).squeeze(1).cpu().numpy()
+        tgt_np = batch["target"].squeeze(1).cpu().numpy()
+        msk_np = batch["mask"].squeeze(1).cpu().numpy()
+        for i, sid in enumerate(batch["meta"]["series_id"]):
+            m = compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=threshold)
+            series_metrics[sid].append(m)
+
+    agg = aggregate_series_metrics(series_metrics)
+    return {
+        "f1": agg["f1_event_mean"],
+        "iou": agg["iou_event_mean"],
+        "precision": agg["precision_event_mean"],
+        "recall": agg["recall_event_mean"],
+        "n_series_evaluated": agg["n_series_evaluated"],
     }
 
 
@@ -92,12 +204,18 @@ def train_fold(
         hidden_ch=args.hidden_ch,
         scar_corruption_prob=args.scar_corruption,
     ).to(device)
+    model_config = {
+        "olci_channels": 5,
+        "hidden_ch": args.hidden_ch,
+        "scar_corruption_prob": args.scar_corruption,
+    }
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
-    best_f1 = -1.0
+    best_score = -float("inf")
     best_metrics: dict[str, float] = {}
+    checkpoint_path: Path | None = None
 
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -133,31 +251,56 @@ def train_fold(
                 f"fold_{fold}/val_loss": val_res["val_loss"],
                 f"fold_{fold}/val_f1_event": val_res["f1_event"],
                 f"fold_{fold}/val_iou_event": val_res["iou_event"],
+                f"fold_{fold}/val_f1_event_best": val_res["f1_event_best"],
+                f"fold_{fold}/val_recall": val_res["recall"],
             },
             global_step=epoch,
         )
 
-        if val_res["f1_event"] > best_f1:
-            best_f1 = val_res["f1_event"]
+        # Selección del checkpoint por F1 óptimo; si no hay métricas informativas
+        # (target sin quemado) se recurre a la pérdida de validación.
+        score = val_res["f1_event_best"]
+        if np.isnan(score):
+            score = -val_res["val_loss"]
+        if score > best_score:
+            best_score = score
             best_metrics = dict(val_res)
-            tracker.save_checkpoint(
+            checkpoint_path = tracker.save_checkpoint(
                 {
                     "fold": fold,
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
+                    "model_config": model_config,
                     "metrics": best_metrics,
                 },
                 filename=f"best_fold_{fold}.pt",
             )
 
         if epoch == 1 or epoch % max(1, args.epochs // 5) == 0 or epoch == args.epochs:
+            f1_txt = (
+                f"F1={val_res['f1_event'] * 100:.2f}%"
+                if not np.isnan(val_res["f1_event"])
+                else "F1=n/d"
+            )
+            best_txt = (
+                f" F1*={val_res['f1_event_best'] * 100:.2f}%@umbral{val_res['best_threshold']:.1f}"
+                if not np.isnan(val_res["f1_event_best"])
+                else ""
+            )
             print(
                 f"  [Fold {fold} | Época {epoch:02d}/{args.epochs:02d}] "
                 f"train_loss={avg_train_loss:.4f} val_loss={val_res['val_loss']:.4f} "
-                f"F1={val_res['f1_event'] * 100:.2f}% IoU={val_res['iou_event'] * 100:.2f}%"
+                f"{f1_txt}{best_txt}"
             )
 
-    return best_metrics
+    return best_metrics, checkpoint_path
+
+
+def _nanmean(values: list[float]) -> float:
+    """Media ignorando NaN (métricas no informativas)."""
+    arr = np.array(values, dtype=float)
+    arr = arr[~np.isnan(arr)]
+    return float(arr.mean()) if arr.size else float("nan")
 
 
 def main() -> int:
@@ -181,6 +324,7 @@ def main() -> int:
 
     t0 = time.time()
     fold_results: list[dict[str, float]] = []
+    checkpoint_paths: list[Path] = []
 
     with ExperimentTracker(args.tag) as tracker:
         print(f"TensorBoard run: {tracker.run_dir}")
@@ -188,22 +332,113 @@ def main() -> int:
 
         for fold in args.folds:
             print(f"--- Entrenando Fold {fold} ---")
-            res = train_fold(fold, args, tracker, device=args.device)
+            res, ckpt_path = train_fold(fold, args, tracker, device=args.device)
             fold_results.append(res)
+            if ckpt_path is not None:
+                checkpoint_paths.append(ckpt_path)
 
-        mean_f1 = float(np.mean([r["f1_event"] for r in fold_results]))
+        mean_f1 = _nanmean([r["f1_event"] for r in fold_results])
         std_f1 = float(np.std([r["f1_event"] for r in fold_results]))
-        mean_iou = float(np.mean([r["iou_event"] for r in fold_results]))
+        mean_iou = _nanmean([r["iou_event"] for r in fold_results])
+        mean_f1_best = _nanmean([r["f1_event_best"] for r in fold_results])
+        mean_recall = _nanmean([r["recall"] for r in fold_results])
         tracker.log_metrics(
-            {"cv/f1_event_mean": mean_f1, "cv/iou_event_mean": mean_iou},
+            {
+                "cv/f1_event_mean": mean_f1,
+                "cv/iou_event_mean": mean_iou,
+                "cv/f1_event_best_mean": mean_f1_best,
+                "cv/recall_mean": mean_recall,
+            },
             global_step=1,
         )
+
+        # ── Umbral operativo ────────────────────────────────────────────────
+        # Los umbrales óptimos se eligen SOLO con los folds de validación. Se
+        # consolidan en uno solo (mediana) y se congelan; el conjunto de test
+        # (fold -1) se evalúa después con ese valor, sin haberlo visto nunca.
+        opt_thresholds = [
+            r["best_threshold"] for r in fold_results if not np.isnan(r["best_threshold"])
+        ]
+        if opt_thresholds:
+            tau = float(np.median(opt_thresholds))
+            spread = float(max(opt_thresholds) - min(opt_thresholds))
+        else:
+            tau, spread = DEFAULT_THRESHOLD, 0.0
+
+        print(f"\nUmbral operativo (mediana de los óptimos por fold): {tau:.2f}")
+        print(f"  Rango entre folds: {min(opt_thresholds):.2f}–{max(opt_thresholds):.2f}"
+              if opt_thresholds else "  (sin umbrales disponibles)")
+        if spread > 0.1:
+            print(
+                "  ⚠ AVISO: los umbrales óptimos difieren en más de 0,1 entre folds. "
+                "El modelo no es estable; el umbral congelado es poco fiable."
+            )
+
+        # ── Test con el umbral congelado ────────────────────────────────────
+        test_metrics: list[dict[str, float]] = []
+        for path in checkpoint_paths:
+            m = evaluate_checkpoint_on_test(
+                path,
+                index_path=args.index,
+                device=args.device,
+                threshold=tau,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+            )
+            if m:
+                test_metrics.append(m)
+
+        test_summary = {
+            "f1": _nanmean([m["f1"] for m in test_metrics]),
+            "iou": _nanmean([m["iou"] for m in test_metrics]),
+            "precision": _nanmean([m["precision"] for m in test_metrics]),
+            "recall": _nanmean([m["recall"] for m in test_metrics]),
+            "n_series_evaluated": int(
+                np.mean([m["n_series_evaluated"] for m in test_metrics])
+            ) if test_metrics else 0,
+        }
+        tracker.log_metrics(
+            {f"test/f1@{tau:.2f}": test_summary["f1"], f"test/iou@{tau:.2f}": test_summary["iou"]},
+            global_step=1,
+        )
+
+        # Persistir el umbral junto a los checkpoints para la inferencia
+        payload = {
+            "operational_threshold": tau,
+            "per_fold_best_threshold": opt_thresholds,
+            "threshold_spread": spread,
+            "test_fold": TEST_FOLD,
+            "test_metrics": test_summary,
+            "note": (
+                "El umbral se elige con los folds de validación y se congela aquí. "
+                "Para estimar área quemada NO hace falta umbral: suma las probabilidades."
+            ),
+        }
+        threshold_file = tracker.checkpoint_dir / "operational_threshold.json"
+        with open(threshold_file, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        print(f"\nUmbral y métricas de test guardados en: {threshold_file}")
 
     elapsed = time.time() - t0
     print("\n" + "=" * 72)
     print(f"RESUMEN CV ({len(fold_results)} folds) en {elapsed:.1f} s:")
     print(f"  F1 (Macro-evento): {mean_f1 * 100:.2f}% ± {std_f1 * 100:.2f}%")
     print(f"  IoU (Jaccard):     {mean_iou * 100:.2f}%")
+    print(f"  F1 (mejor umbral): {mean_f1_best * 100:.2f}%")
+    print(f"  Recall:            {mean_recall * 100:.2f}%")
+    print("-" * 72)
+    print(
+        f"EVALUACIÓN EN TEST (fold {TEST_FOLD}, fuera de dominio) "
+        f"con el umbral congelado {tau:.2f}:"
+    )
+    if test_metrics:
+        print(f"  F1:        {test_summary['f1'] * 100:.2f}%")
+        print(f"  IoU:       {test_summary['iou'] * 100:.2f}%")
+        print(f"  Precisión: {test_summary['precision'] * 100:.2f}%")
+        print(f"  Recall:    {test_summary['recall'] * 100:.2f}%")
+        print(f"  Series evaluadas: {test_summary['n_series_evaluated']}")
+    else:
+        print("  (sin muestras en el fold de test)")
     print("=" * 72)
     return 0
 
