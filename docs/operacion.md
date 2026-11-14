@@ -212,3 +212,56 @@ otra fuente de etiquetas, **nunca está en el camino de inferencia** (datos.md �
 | **La evaluación es siempre contra CEMS** | CEMS lo dibujaron analistas con otras imágenes; con FireCCI S3.1.1 el modelo podría replicar su clasificador en vez de aprender física (investigacion.md §2, R21) |
 | **La entrada de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
 | **FIRMS/VIIRS como canal adicional** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
+
+## 8. Regenerar el dataset y lanzar runs largos
+
+> **El dataset no se versiona en Git** (`data/` está en `.gitignore`). Cada workstation
+> genera el suyo en local, y **el dataset debe regenerarse siempre después de tocar el
+> generador de cicatriz o la construcción de la ventana temporal**.
+
+### Orden obligatorio antes de entrenar
+
+```bash
+# 1. Regenerar el dataset (≈20 s con GPU; no requiere re-descargar nada)
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+
+# 2. Fijar la referencia de comparación (baselines B0/B1 sobre el dataset nuevo)
+uv run --extra rocm python scripts/evaluate_baselines.py
+
+# 3. Entrenar (≈85 s por época y fold → ~2 h para 15 épocas × 5 folds)
+nohup uv run --extra rocm python scripts/train_propagation.py \
+      --epochs 15 --tag prop_v2 > runs/prop_v2.log 2>&1 &
+```
+
+**El paso 1 no es opcional.** La cicatriz de entrada (`x_scar`) y el target están
+horneados dentro de los `.npz` de cada muestra: cambiar el generador sin regenerar deja
+el dataset viejo en disco y el entrenamiento sigue usando el anterior.
+
+### Runs largos
+
+El entrenamiento completo son ~2 h: lánzalo con `nohup` (o `tmux`) y vigila el log.
+Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el proceso.
+
+### Cómo leer los números
+
+- **F1 a umbral 0,5** y **F1 en el mejor umbral** se reportan por separado. Un modelo
+  probabilístico desbalanceado rara vez opera en 0,5; el barrido de umbrales (0,1–0,7)
+  da el punto de operación real y hace la comparación con los baselines binarios justa.
+- **El umbral operativo se congela**: al terminar la CV se toma la mediana de los
+  umbrales óptimos de cada fold de validación y se guarda en
+  `checkpoints/<run>/operational_threshold.json` junto a los pesos. El conjunto de test
+  (fold -1, fuera de dominio) se evalúa **después**, con ese umbral ya congelado: es el
+  número publicable, porque el test no ha participado ni en la elección del checkpoint
+  ni en la del umbral.
+- **En inferencia, ese umbral es una constante**: `quemado = probs >= TAU_OPERACION`.
+  Si los umbrales óptimos difieren en más de 0,1 entre folds, el entrenamiento avisa de
+  que el modelo es inestable y el umbral poco fiable.
+- **Para estimar área quemada no hace falta umbral**: el área esperada es la suma de las
+  probabilidades. El umbral solo se aplica cuando hace falta una decisión binaria
+  (activar una alerta, categorizar un mapa de riesgo).
+- **Recall** importa tanto como el F1: un F1 bajo con recall ~0 significa que el modelo
+  predice ausencia de quemado, no que no haya aprendido nada.
+- **Un target sin quemado se reporta como NaN**, no como F1 = 1,0. Si un informe muestra
+  un 100% sin más, suspecta de un dataset vacío antes de congratularte.
+- La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
+  el mismo dataset.

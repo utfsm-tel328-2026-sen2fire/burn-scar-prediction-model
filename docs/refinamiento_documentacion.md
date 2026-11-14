@@ -83,6 +83,7 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
 * **Módulo:** [`src/burn_scar/models/tmb_s3.py`](../src/burn_scar/models/tmb_s3.py)
 * **Arquitectura:** ConvLSTM temporal (kernel $3\times 3$, 64 canales ocultos) + Backbone MiniSegFormer de 3 etapas con Efficient Self-Attention (SR-Ratios 4, 2, 1).
 * **Pesos:** Checkpoint `convlstm_segformer_prepost_subset` descargado desde Hugging Face (`links-ads/tmb-s3`, 4.62 MB).
+* **Salida correcta:** el canal **0** del modelo es el logit de "quemado" (upstream `bafep/modules/mean_teacher.py`: `_FIRE_CH = 0`, entrenado con BCE sobre un único logit). El canal **1** es la *cabeza de nubes* (`_CLOUD_CH = 1`), entrenada con peso `lambda_cloud = 0`, por lo que sus valores no son fiables. La cicatriz se obtiene con `sigmoid(logits[:, :, 0])`.
 * **Comportamiento:** Se carga en la GPU (NVIDIA RTX 5060) en modo `eval()`, con todos los pesos congelados (`requires_grad = False`). Produce el mapa de probabilidad de quemado actual `scar` sobre parches de $64\times 64$.
 
 ### Paso 4: Descarga de Imágenes Satelitales y Relieve (GEE)
@@ -97,12 +98,15 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
 * **Script:** [`scripts/build_pytorch_dataset.py`](../scripts/build_pytorch_dataset.py)
 * **Módulo Dataset:** [`src/burn_scar/dataset.py`](../src/burn_scar/dataset.py)
 * **Operación:**
-  1. Alinea cada muestra con su ventana temporal de 7 frames OLCI terminando en $f$.
-  2. Ejecuta TMB-S3 en GPU para obtener $\text{scar}(f) \in [0, 1]$.
-  3. Calcula el target causal:
+  1. Compone la ventana temporal de 7 frames OLCI como **1 frame pre-incendio + 6 post-incendio** que terminan en $f$ (BL1). El corte pre-incendio es la hora de adquisición de la primera ronda CEMS de la serie.
+  2. Descarta las adquisiciones no utilizables: las que superan el **20% de píxeles sin dato** (mismo criterio que el dataset upstream) y las **nocturnas** (sin ningún píxel válido con señal).
+  3. Sustituye cada píxel sin dato por la **media de su banda** en el frame (nunca 0: en las bandas visibles el 0 parecería quemado).
+  4. Ejecuta TMB-S3 en GPU para obtener $\text{scar}(f) \in [0, 1]$.
+  5. Calcula el target causal:
      $$\text{Target}(f, h) = \text{clip}\left(\text{CEMS}(r+1) - \text{scar}_{\text{TMB3}}(f),\, 0,\, 1\right)$$
-  4. Asigna cada muestra a su Fold geográfico correspondiente.
-* **Resultado:** 390 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json`.
+  6. Asigna cada muestra a su Fold geográfico correspondiente.
+* **Resultado:** 390 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` para auditar la ventana temporal).
+* **Verificación:** 358/390 muestras (91,8%) tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8).
 
 ---
 
@@ -180,12 +184,13 @@ uv run pytest -v
 ```
 
 ```
-tests/test_baselines.py ...                                              [ 15%]
-tests/test_dataset.py ..                                                 [ 26%]
-tests/test_env.py .....                                                  [ 52%]
-tests/test_tmb_s3.py ...                                                 [ 68%]
+tests/test_baselines.py .....                                             [ 17%]
+tests/test_dataset.py ..                                                 [ 23%]
+tests/test_env.py .....                                                  [ 40%]
+tests/test_propagation.py ...                                            [ 50%]
+tests/test_tmb_s3.py ...                                                 [ 63%]
 tests/test_tracking.py ......                                            [100%]
-============================== 19 passed in 3.06s ==============================
+============================= 24 passed in 8.11s ==============================
 ```
 
 ---
@@ -211,8 +216,13 @@ uv run python scripts/rasterize_cems_labels.py
 uv run python scripts/download_gee_olci.py
 
 # 6. Precalcular cicatriz con TMB-S3 y ensamblar muestras del dataset
+#    (≈20 s en GPU; hay que repetirlo tras cualquier cambio en el generador
+#     de cicatriz o en la ventana temporal: el dataset no se versiona en Git)
 uv run python scripts/build_pytorch_dataset.py
 
 # 7. Ejecutar evaluación de los baselines de referencia
 uv run python scripts/evaluate_baselines.py
+
+# 8. Entrenar el modelo de propagación (≈2 h; usar nohup/tmux)
+uv run python scripts/train_propagation.py --epochs 15 --tag prop_v2
 ```
