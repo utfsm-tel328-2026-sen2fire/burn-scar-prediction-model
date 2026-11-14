@@ -12,6 +12,26 @@ checkpoints/
 # Estado local del shell de devenv (interprete, venv, perfil)
 .devenv/
 
+# Datos, artefactos y datasets
+/data/
+/models/
+
+# Extensiones de archivos binarios y datos pesados
+*.npz
+*.npy
+*.safetensors
+*.pt
+*.pth
+*.parquet
+*.h5
+*.hdf5
+*.tif
+*.tiff
+*.nc
+*.tar*
+*.zip
+*.geojson
+
 # Configuración local (rutas de montaje personales)
 .env
 .env.*

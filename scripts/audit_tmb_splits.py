@@ -112,7 +112,19 @@ def is_geo_mediterranean(c: tuple[float, float]) -> bool:
 # ---------------------------------------------------------------- TMB-S3
 
 def fetch_tmb_manifest() -> list:
-    """Las 770 filas del manifest.parquet de TMB-S3 vía el servidor de datasets de HF."""
+    """Las 770 filas del manifest.parquet de TMB-S3."""
+    import os
+    local_cache = "data/tmb_manifest.json"
+    if os.path.exists(local_cache):
+        try:
+            with open(local_cache, "r", encoding="utf-8") as fh:
+                rows = json.load(fh)
+                if rows:
+                    return rows
+        except Exception as e:
+            print(f"Aviso: no se pudo leer {local_cache}: {e}", file=sys.stderr)
+
+    # Fallback vía datasets-server de HF
     rows: list = []
     offset = 0
     while True:

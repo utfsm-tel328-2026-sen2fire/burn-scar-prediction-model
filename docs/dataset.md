@@ -57,12 +57,12 @@ El dataset tiene **tres ejes temporales** y una regla que los une:
 > Es la formulación que **reproduce la operación** (se actualiza cada ~2 días) y hace que el
 > arranque en frío aparezca solo.
 >
-> ⚠️ **El número de muestras con esta regla está sin medir (P7).** El censo de §3 cuenta
-> **productos CEMS** (455 DEL + 96 FEP = 551), no frames OLCI: una serie tiene del orden de
-> 4-5 adquisiciones OLCI durante el evento, y solo las que caen dentro del intervalo de una
-> ronda y tienen ronda objetivo son muestras. El dato sale de cruzar las adquisiciones OLCI
-> con las rondas CEMS, en la ingesta. Lo que sí es inmediato: 455 productos DEL frente a 359
-> transiciones.
+> ✓ **El número de muestras con esta regla ha sido medido (P7 resuelto, 2026-11-08):**
+> Cruzando las 46 series limpias de CEMS con el catálogo CDSE OData de pasadas reales de
+> Sentinel-3 OLCI, resultan **414 muestras $(f, h)$** sobre **44 series** con $\ge 2$
+> rondas DEL con fecha válida (336 muestras en 36 series genuinamente mediterráneas y 78 muestras
+> en 8 series de ultramar/atlántico). Horizonte $h$: mediana 0,92 días (~22 h), p75 1,18 d.
+> El detalle estructurado está en `data/cems_manifest_46.json`.
 
 ```
   EMSR922__AOI01.npz
