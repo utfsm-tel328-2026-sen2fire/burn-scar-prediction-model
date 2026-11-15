@@ -4,6 +4,10 @@ Evaluación de Modelos de Referencia (Baselines B0 y B1) sobre los 5 Folds de CV
 
 Evalúa los baselines B0 (Persistencia) y B1 (Dilatación Radial) sobre las muestras
 reales del dataset en píxeles válidos (mask == 1) promediando por evento (docs/dataset.md §10).
+
+Informa además del trivial "todo quemado" y de las métricas contra el target de
+referencia (crecimiento real entre rondas CEMS), para que cada F1 se lea con la
+escala de su propia etiqueta y no se comparen F1 de etiquetas distintas.
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import numpy as np
 from burn_scar.dataset import BurnScarDataset
 from burn_scar.baselines import (
+    BaselineAllBurned,
     BaselineB0Persistence,
     BaselineB1RadialDilation,
     aggregate_series_metrics,
@@ -28,6 +33,7 @@ from burn_scar.baselines import (
 def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str, float]:
     """Evalúa un baseline promediando métricas por serie/evento (docs/dataset.md §10)."""
     series_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
+    series_metrics_ref: dict[str, list[dict[str, float]]] = defaultdict(list)
 
     for i in range(len(dataset)):
         sample = dataset[i]
@@ -43,10 +49,20 @@ def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str
         m = compute_metrics_numpy(pred, target, mask, threshold=0.5)
         series_metrics[series_id].append(m)
 
+        # Target de referencia (crecimiento real entre rondas CEMS), si existe
+        if float(sample["has_reference"].item()) > 0:
+            ref_target = sample["target_cems"].squeeze(0).numpy()
+            ref_mask = sample["mask_cems"].squeeze(0).numpy()
+            mr = compute_metrics_numpy(pred, ref_target, ref_mask, threshold=0.5)
+            series_metrics_ref[series_id].append(mr)
+
     # Promedio por serie primero (D10: un evento = una serie), ignorando NaN
     agg = aggregate_series_metrics(series_metrics)
+    ref_agg = (
+        aggregate_series_metrics(series_metrics_ref) if series_metrics_ref else None
+    )
 
-    return {
+    out = {
         "model": model_name,
         "n_series": agg["n_series_total"],
         "n_series_evaluated": agg["n_series_evaluated"],
@@ -56,7 +72,18 @@ def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str
         "iou_event_mean": agg["iou_event_mean"],
         "precision_mean": agg["precision_event_mean"],
         "recall_mean": agg["recall_event_mean"],
+        "ref_available": ref_agg is not None,
+        "ref_f1_event_mean": ref_agg["f1_event_mean"] if ref_agg else float("nan"),
+        "ref_iou_event_mean": ref_agg["iou_event_mean"] if ref_agg else float("nan"),
+        "ref_precision_mean": ref_agg["precision_event_mean"] if ref_agg else float("nan"),
+        "ref_recall_mean": ref_agg["recall_event_mean"] if ref_agg else float("nan"),
+        "ref_n_series_evaluated": ref_agg["n_series_evaluated"] if ref_agg else 0,
     }
+    return out
+
+
+def _pct(value: float) -> str:
+    return "n/d" if np.isnan(value) else f"{value * 100:.2f}%"
 
 
 def main() -> int:
@@ -69,26 +96,47 @@ def main() -> int:
     print("Métrica: Promedio por evento sobre píxeles válidos (umbral 0.5)")
     print("=" * 72)
 
-    # Evaluar sobre el conjunto mediterráneo (folds 0..4)
+    # Evaluar sobre el conjunto mediterráneo (folds 0..4) y sobre el test
     dataset_med = BurnScarDataset(index_path=args.index, folds=list(range(5)))
+    dataset_test = BurnScarDataset(index_path=args.index, folds=[-1])
 
     models = [
         (BaselineB0Persistence(), "B0: Persistencia (Cero Crecimiento)"),
         (BaselineB1RadialDilation(growth_rate_km_per_day=0.6), "B1: Dilatación Radial Isótropa"),
+        (BaselineAllBurned(), "TRIVIAL: Todo quemado (escala mínima, no es un modelo)"),
     ]
 
-    for model, name in models:
-        res = evaluate_model(dataset_med, model, name)
-        print(f"\nResultados: {name}")
-        print(f"  Series evaluadas:  {res['n_series_evaluated']}/{res['n_series']} "
-              f"({res['n_samples']} muestras)")
-        print(f"  F1 (Macro-evento): {res['f1_event_mean'] * 100:.2f}% ± {res['f1_event_std'] * 100:.2f}%")
-        print(f"  IoU (Jaccard):     {res['iou_event_mean'] * 100:.2f}%")
-        print(f"  Precisión:         {res['precision_mean'] * 100:.2f}%")
-        print(f"  Recall (Sensib.):  {res['recall_mean'] * 100:.2f}%")
+    for dataset, nombre_conjunto in (
+        (dataset_med, "CONJUNTO DE VALIDACIÓN (folds 0-4)"),
+        (dataset_test, "CONJUNTO DE TEST (fold -1, fuera de dominio)"),
+    ):
+        print("\n" + "#" * 72)
+        print(f"# {nombre_conjunto}")
+        print("#" * 72)
+        for model, name in models:
+            res = evaluate_model(dataset, model, name)
+            print(f"\nResultados: {name}")
+            print(f"  Series evaluadas:  {res['n_series_evaluated']}/{res['n_series']} "
+                  f"({res['n_samples']} muestras)")
+            print(f"  F1 (Macro-evento): {_pct(res['f1_event_mean'])} ± "
+                  f"{_pct(res['f1_event_std'])}")
+            print(f"  IoU (Jaccard):     {_pct(res['iou_event_mean'])}")
+            print(f"  Precisión:         {_pct(res['precision_mean'])}")
+            print(f"  Recall (Sensib.):  {_pct(res['recall_mean'])}")
+            if res["ref_available"]:
+                print("  --- contra el target de referencia (crecimiento real CEMS) ---")
+                print(f"  Series evaluadas:  {res['ref_n_series_evaluated']}/{res['n_series']}")
+                print(f"  F1 (Macro-evento): {_pct(res['ref_f1_event_mean'])}")
+                print(f"  IoU (Jaccard):     {_pct(res['ref_iou_event_mean'])}")
+                print(f"  Precisión:         {_pct(res['ref_precision_mean'])}")
+                print(f"  Recall (Sensib.):  {_pct(res['ref_recall_mean'])}")
+            else:
+                print("  --- target de referencia: no disponible ---")
 
     print("\n" + "=" * 72)
-    print("✓ Baselines calculados. Cualquier red neuronal (M-A o M-B) debe superar B1/B2.")
+    print("✓ Baselines calculados. Cualquier red neuronal (M-A o M-B) debe superar B1.")
+    print("  Los F1 de etiquetas distintas NO son comparables entre sí: cada uno se")
+    print("  lee contra el trivial 'todo quemado' de su propia etiqueta.")
     print("=" * 72)
     return 0
 

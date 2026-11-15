@@ -286,3 +286,93 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
   un 100% sin más, suspecta de un dataset vacío antes de congratularte.
 - La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
+
+## 9. Qué etiqueta se está midiendo (diagnóstico del target)
+
+El dataset guarda **dos etiquetas** por muestra:
+
+| Etiqueta | Definición | Para qué |
+|---|---|---|
+| **De ensamblaje** (`target`) | `clip(CEMS(r+h) − cicatriz_TMB3(f), 0, 1)` | Es la que entrena el modelo de producción |
+| **De referencia** (`target_cems`) | `clip(CEMS(r+h) − CEMS(r_f), 0, 1)` | El crecimiento **real** entre rondas CEMS. Es la verdad de propagación |
+
+No son la misma cosa. La de ensamblaje resta una **fotografía** de TMB-S3, que en el frente
+de fuego se queda corta: el resultado mezcla crecimiento nuevo con quemado que ya existía
+y que el generador no detectó. Medido sobre las 390 muestras:
+
+| | Etiqueta de ensamblaje | Etiqueta de referencia |
+|---|---|---|
+| Superficie mediana a umbral 0,5 | 77 px | **10 px** (7,7× menos) |
+| IoU entre ambas | **0,112** | — |
+
+**Por eso el F1 se multiplica por 2,7**: una etiqueta 7 veces más grande es más fácil de
+acertar.
+
+### El resultado del diagnóstico
+
+Conjunto de test (fold -1, fuera de dominio), umbral operativo congelado en 0,10:
+
+| Modelo | F1 contra la etiqueta de ensamblaje | F1 contra la **referencia** (propagación real) |
+|---|---|---|
+| B0 persistencia | 0,00% | 0,00% |
+| B1 dilatación radial | 12,00% | 3,05% |
+| Trivial "todo quemado" | 11,34% | 3,17% |
+| **Modelo de producción** (`prop_v2`) | **33,80%** | **12,41%** |
+| Modelo entrenado con la referencia | 11,03% | 11,03% |
+
+Cómo leerlo:
+
+- **El número publicable de propagación es 12,41%**, no 33,80%. Este último mide desempeño
+  contra una etiqueta que incluye quemado no detectado.
+- **El modelo sí aprende**: contra el crecimiento real saca 12,41%, cuatro veces el trivial
+  de esa misma etiqueta (3,17%). Pero la vara real contra el crecimiento real es ~3%, no
+  ~12%: **contra la verdad, B1 y no hacer nada son prácticamente igual** (3,05% frente a
+  3,17%).
+- **Entrenar con la etiqueta limpia no mejora** (11,03% frente a 12,41% contra la misma
+  verdad). El target de referencia tiene 7× menos superficie y es más ruidoso en términos
+  relativos, así que no es un juego de suma cero: el problema de propagación es genuinamente
+  difícil.
+- **Recall 80% con precisión 8%**: el modelo acierta *dónde* se va a quemar, pero
+  sobreestima la anchura del frente. Es el siguiente frente de trabajo.
+
+### Cómo reproducir el diagnóstico
+
+```bash
+# 1. Regenerar el dataset (guarda ya las dos etiquetas)
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+
+# 2. Ver los números contra las dos etiquetas y el trivial
+uv run --extra rocm python scripts/evaluate_baselines.py
+
+# 3. Reevaluar un run existente sin reentrenar
+uv run --extra rocm python scripts/train_propagation.py --eval-only checkpoints/<run>
+
+# 4. Dataset y entrenamiento con la etiqueta de referencia (diagnóstico)
+uv run --extra rocm python scripts/build_pytorch_dataset.py --target-mode cems \
+      --samples-out data/processed_target_cems/samples \
+      --index-out data/processed_target_cems/dataset_index.json
+uv run --extra rocm python scripts/train_propagation.py --epochs 15 \
+      --index data/processed_target_cems/dataset_index.json --tag prop_cems_diag
+```
+
+### Ojo con comparar etiquetas distintas
+
+**Un F1 de una etiqueta no se compara con un F1 de otra.** Cada etiqueta tiene su escala
+mínima (el trivial "todo quemado"), que es la referencia con la que hay que leerlo.
+Por eso `evaluate_baselines.py` imprime siempre el trivial al lado.
+
+### Sobre la comparación con TMB-S3 upstream
+
+TMB-S3 upstream evalúa **detección** de quemado: mira imágenes donde el fuego ya está y
+etiqueta qué está quemado, con etiquetas derivadas de MCD64A1 y una regla "OR" que infla el
+área un 34%. Su F1 de 69,45 / IoU 59,81 es de **su propio test set y sus propias etiquetas**.
+
+Este proyecto evalúa **pronóstico**: predecir qué se quemará en las próximas horas, con la
+etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que el 69,45 no es una
+meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **B1** (12,00%
+contra la etiqueta de ensamblaje, 3,05% contra la referencia), porque usa la misma
+información disponible que el modelo.
+
+Donde el número de upstream sí es útil es como referencia de la **calidad del generador de
+cicatriz**, que es el techo de la entrada `x_scar` y, por tanto, el techo de la etiqueta de
+ensamblaje.

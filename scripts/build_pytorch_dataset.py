@@ -41,6 +41,44 @@ def _frame_key(iso_timestamp: str) -> str:
     return iso_timestamp.replace("-", "").replace(":", "")[:15]
 
 
+def _reference_growth(
+    all_burnt: np.ndarray,
+    all_valid: np.ndarray,
+    round_times: list[str | None],
+    frame_dt: dt.datetime,
+    target_idx: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Target de referencia: crecimiento real entre la última ronda CEMS conocida en
+    el instante del frame actual (r_f) y la ronda objetivo.
+
+    Devuelve (target_cems, mask_cems), donde mask_cems es la validez común a
+    las dos rondas. Si la serie no tiene ronda previa, devuelve el crecimiento a
+    cero y una máscara vacía: la muestra se conserva, pero sin target de
+    referencia.
+    """
+    f_idx: int | None = None
+    for i, iso in enumerate(round_times):
+        if iso is None:
+            continue
+        if dt.datetime.fromisoformat(iso) <= frame_dt:
+            if f_idx is None or iso > round_times[f_idx]:
+                f_idx = i
+    if f_idx is None:
+        return (
+            np.zeros(all_burnt[target_idx].shape, dtype=np.float32),
+            np.zeros(all_valid[target_idx].shape, dtype=np.uint8),
+        )
+
+    growth = np.clip(
+        all_burnt[target_idx].astype(np.float32) - all_burnt[f_idx].astype(np.float32),
+        0.0,
+        1.0,
+    )
+    common = ((all_valid[target_idx] == 1) & (all_valid[f_idx] == 1)).astype(np.uint8)
+    return growth, common
+
+
 def assign_geographic_folds(series_list: list[dict]) -> dict[str, int]:
     """Asigna cada serie a uno de los 5 folds geográficos (D8, D14, BL6)."""
     # 1. Agrupar series por código de activación EMSR para evitar que distintos AOIs del mismo fuego se separen
@@ -75,12 +113,22 @@ def main() -> int:
     parser.add_argument("--cems-manifest", default="data/cems_manifest_46.json")
     parser.add_argument("--samples-out", default="data/processed/samples")
     parser.add_argument("--index-out", default="data/processed/dataset_index.json")
+    parser.add_argument(
+        "--target-mode",
+        choices=("scar", "cems"),
+        default="scar",
+        help=(
+            "Target de propagación: 'scar' = clip(CEMS(dest) - cicatriz TMB-S3(f)) "
+            "(producción); 'cems' = crecimiento real entre rondas CEMS (diagnóstico)"
+        ),
+    )
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 72)
     print("PASO 5: ENSAMBLAJE DEL DATASET PYTORCH (TMB-S3 + OLCI + CEMS)")
     print(f"Dispositivo activo: {device}")
+    print(f"Modo de target: {args.target_mode}")
     if device == "cuda":
         print(f"GPU: {torch.cuda.get_device_name(0)}")
     print("=" * 72)
@@ -134,6 +182,14 @@ def main() -> int:
         cems_quemado = cems_npz["quemado"]  # (T_rondas, 64, 64)
         cems_valido = cems_npz["valido"]    # (T_rondas, 64, 64)
         round_numbers = list(cems_npz["round_numbers"])
+
+        # Tiempo de adquisición de cada ronda, alineado con round_numbers
+        round_time_by_num = {
+            int(r["monitoring_number"]): r.get("acquisition_time")
+            for r in cems_s.get("rounds", [])
+            if r.get("monitoring_number") is not None
+        }
+        round_times = [round_time_by_num.get(int(n)) for n in round_numbers]
 
         # Cargar estáticas (.npz)
         static_file = f"data/raw/static/{sid}/static_layers.npz"
@@ -262,6 +318,19 @@ def main() -> int:
             # Target = clip(poligono(r+1) - scar_TMB3(f), 0, 1)
             target_delta = np.clip(gt_target_burnt.astype(np.float32) - scar_f.astype(np.float32), 0.0, 1.0)
 
+            # 4b. Target de referencia: crecimiento real entre la última ronda CEMS
+            # conocida en el instante f y la ronda objetivo, con la validez común.
+            target_cems, mask_cems = _reference_growth(
+                cems_quemado, cems_valido, round_times, f_dt, r_idx
+            )
+
+            if args.target_mode == "cems":
+                target_out = target_cems
+                mask_out = mask_cems
+            else:
+                target_out = target_delta
+                mask_out = gt_target_valid.astype(np.uint8)
+
             # Guardar muestra en disco
             sample_file = os.path.join(args.samples_out, f"{sample_id}.npz")
             np.savez_compressed(
@@ -271,8 +340,10 @@ def main() -> int:
                 x_worldcover=worldcover.astype(np.uint8),
                 x_scar=scar_f.astype(np.float16),
                 horizon_days=np.float32(horizon_days),
-                target=target_delta.astype(np.float16),
-                mask=gt_target_valid.astype(np.uint8),
+                target=target_out.astype(np.float16),
+                mask=mask_out.astype(np.uint8),
+                target_cems=target_cems.astype(np.float16),
+                mask_cems=mask_cems.astype(np.uint8),
             )
 
             fold_id = series_fold_map.get(sid, 0)
@@ -283,6 +354,7 @@ def main() -> int:
                 "fold": fold_id,
                 "horizon_days": horizon_days,
                 "frame_keys": selected_keys,
+                "target_mode": args.target_mode,
                 "sensor_changed": smp.get("sensor_changed", False),
                 "geo_mediterranean": s_meta.get("geo_mediterranean", True),
                 "in_tmb_test": s_meta.get("in_tmb_test", False),
@@ -297,6 +369,7 @@ def main() -> int:
     with open(args.index_out, "w", encoding="utf-8") as f:
         json.dump({
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "target_mode": args.target_mode,
             "total_samples": len(sample_index),
             "folds_distribution": {
                 f"fold_{f}": sum(1 for s in sample_index if s["fold"] == f)
@@ -310,6 +383,7 @@ def main() -> int:
     print("\n" + "=" * 72)
     print("RESUMEN DE ENSAMBLAJE (PASO 5)")
     print("=" * 72)
+    print(f"Modo de target:               {args.target_mode}")
     print(f"Total de muestras ensambladas:  {total_samples}")
     print(f"Archivo de índice guardado en: {args.index_out}")
     print(f"Archivos de muestra (.npz) en:  {args.samples_out}")

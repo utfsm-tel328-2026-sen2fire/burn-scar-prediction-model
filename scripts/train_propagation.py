@@ -40,12 +40,20 @@ def evaluate_fold(
     device: str,
     threshold: float = DEFAULT_THRESHOLD,
 ) -> dict[str, float]:
-    """Evalúa un fold promediando métricas por serie/evento (D10)."""
+    """
+    Evalúa un fold promediando métricas por serie/evento (D10).
+
+    Calcula las métricas contra dos etiquetas: el target de ensamblaje del
+    dataset y el target de referencia (crecimiento real entre rondas CEMS).
+    """
     model.eval()
     total_loss = 0.0
     n_batches = 0
     # Métricas por serie y por umbral (ignora NaN: targets sin quemado)
     series_metrics: dict[str, dict[float, list[dict[str, float]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    series_metrics_ref: dict[str, dict[float, list[dict[str, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
 
@@ -66,12 +74,20 @@ def evaluate_fold(
         probs = torch.sigmoid(logits).squeeze(1).cpu().numpy()
         tgt_np = target.squeeze(1).cpu().numpy()
         msk_np = mask.squeeze(1).cpu().numpy()
+        ref_tgt_np = batch["target_cems"].squeeze(1).cpu().numpy()
+        ref_msk_np = batch["mask_cems"].squeeze(1).cpu().numpy()
+        has_ref = batch["has_reference"].cpu().numpy().reshape(-1)
         series_ids = batch["meta"]["series_id"]
 
         for i, sid in enumerate(series_ids):
             for th in EVAL_THRESHOLDS:
                 m = compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=th)
                 series_metrics[sid][th].append(m)
+                if has_ref[i] > 0:
+                    mr = compute_metrics_numpy(
+                        probs[i], ref_tgt_np[i], ref_msk_np[i], threshold=th
+                    )
+                    series_metrics_ref[sid][th].append(mr)
 
     # Agregado por serie para cada umbral
     per_threshold = {
@@ -88,6 +104,29 @@ def evaluate_fold(
         ),
     )
     at_best = per_threshold[best_th]
+
+    # Target de referencia (crecimiento real entre rondas CEMS)
+    ref_available = bool(series_metrics_ref)
+    if ref_available:
+        per_threshold_ref = {
+            th: aggregate_series_metrics({sid: ms[th] for sid, ms in series_metrics_ref.items()})
+            for th in EVAL_THRESHOLDS
+        }
+        ref_at_default = per_threshold_ref[threshold]
+        ref_best_th = max(
+            EVAL_THRESHOLDS,
+            key=lambda th: (
+                per_threshold_ref[th]["f1_event_mean"]
+                if not np.isnan(per_threshold_ref[th]["f1_event_mean"])
+                else -1.0
+            ),
+        )
+        ref_at_best = per_threshold_ref[ref_best_th]
+    else:
+        per_threshold_ref = {}
+        ref_at_default = {}
+        ref_at_best = {}
+        ref_best_th = float("nan")
 
     return {
         "val_loss": total_loss / max(1, n_batches),
@@ -110,6 +149,25 @@ def evaluate_fold(
             }
             for th in EVAL_THRESHOLDS
         },
+        # Target de referencia: el desempeño contra el crecimiento real CEMS
+        "ref_available": ref_available,
+        "ref_f1_event": ref_at_default.get("f1_event_mean", float("nan")),
+        "ref_iou_event": ref_at_default.get("iou_event_mean", float("nan")),
+        "ref_precision": ref_at_default.get("precision_event_mean", float("nan")),
+        "ref_recall": ref_at_default.get("recall_event_mean", float("nan")),
+        "ref_n_series_evaluated": ref_at_default.get("n_series_evaluated", 0),
+        "ref_f1_event_best": ref_at_best.get("f1_event_mean", float("nan")),
+        "ref_best_threshold": float(ref_best_th),
+        "ref_per_threshold": {
+            th: {
+                "f1": per_threshold_ref[th]["f1_event_mean"],
+                "iou": per_threshold_ref[th]["iou_event_mean"],
+                "precision": per_threshold_ref[th]["precision_event_mean"],
+                "recall": per_threshold_ref[th]["recall_event_mean"],
+                "n_series_evaluated": per_threshold_ref[th]["n_series_evaluated"],
+            }
+            for th in EVAL_THRESHOLDS
+        } if ref_available else {},
     }
 
 
@@ -144,10 +202,26 @@ def evaluate_checkpoint_on_test(
     )
     res = evaluate_fold(model, loader, device=device)
     metrics = res["per_threshold"].get(threshold)
-    if metrics is None:
+    ref_metrics = res["ref_per_threshold"].get(threshold) if res.get("ref_available") else None
+    if metrics is None or (res.get("ref_available") and ref_metrics is None):
         # El umbral congelado puede no estar en la rejilla: se evalúa aparte
-        metrics = _metrics_at_threshold(model, loader, device, threshold)
-    return metrics
+        return _metrics_at_threshold(model, loader, device, threshold)
+    return {
+        "assembly": {
+            "f1": metrics["f1"],
+            "iou": metrics["iou"],
+            "precision": metrics["precision"],
+            "recall": metrics["recall"],
+            "n_series_evaluated": metrics["n_series_evaluated"],
+        },
+        "reference": None if ref_metrics is None else {
+            "f1": ref_metrics["f1"],
+            "iou": ref_metrics["iou"],
+            "precision": ref_metrics["precision"],
+            "recall": ref_metrics["recall"],
+            "n_series_evaluated": ref_metrics["n_series_evaluated"],
+        },
+    }
 
 
 @torch.no_grad()
@@ -156,10 +230,11 @@ def _metrics_at_threshold(
     loader: torch.utils.data.DataLoader,
     device: str,
     threshold: float,
-) -> dict[str, float]:
-    """Métricas agregadas por evento con un umbral arbitrario."""
+) -> dict[str, dict[str, float] | None]:
+    """Métricas agregadas por evento con un umbral arbitrario, contra ambas etiquetas."""
     model.eval()
     series_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
+    series_metrics_ref: dict[str, list[dict[str, float]]] = defaultdict(list)
 
     for batch in loader:
         logits = model(
@@ -172,18 +247,41 @@ def _metrics_at_threshold(
         probs = torch.sigmoid(logits).squeeze(1).cpu().numpy()
         tgt_np = batch["target"].squeeze(1).cpu().numpy()
         msk_np = batch["mask"].squeeze(1).cpu().numpy()
+        ref_tgt_np = batch["target_cems"].squeeze(1).cpu().numpy()
+        ref_msk_np = batch["mask_cems"].squeeze(1).cpu().numpy()
+        has_ref = batch["has_reference"].cpu().numpy().reshape(-1)
         for i, sid in enumerate(batch["meta"]["series_id"]):
-            m = compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=threshold)
-            series_metrics[sid].append(m)
+            series_metrics[sid].append(
+                compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=threshold)
+            )
+            if has_ref[i] > 0:
+                series_metrics_ref[sid].append(
+                    compute_metrics_numpy(
+                        probs[i], ref_tgt_np[i], ref_msk_np[i], threshold=threshold
+                    )
+                )
 
     agg = aggregate_series_metrics(series_metrics)
-    return {
-        "f1": agg["f1_event_mean"],
-        "iou": agg["iou_event_mean"],
-        "precision": agg["precision_event_mean"],
-        "recall": agg["recall_event_mean"],
-        "n_series_evaluated": agg["n_series_evaluated"],
+    out: dict[str, dict[str, float] | None] = {
+        "assembly": {
+            "f1": agg["f1_event_mean"],
+            "iou": agg["iou_event_mean"],
+            "precision": agg["precision_event_mean"],
+            "recall": agg["recall_event_mean"],
+            "n_series_evaluated": agg["n_series_evaluated"],
+        },
+        "reference": None,
     }
+    if series_metrics_ref:
+        agg_ref = aggregate_series_metrics(series_metrics_ref)
+        out["reference"] = {
+            "f1": agg_ref["f1_event_mean"],
+            "iou": agg_ref["iou_event_mean"],
+            "precision": agg_ref["precision_event_mean"],
+            "recall": agg_ref["recall_event_mean"],
+            "n_series_evaluated": agg_ref["n_series_evaluated"],
+        }
+    return out
 
 
 def train_fold(
@@ -255,6 +353,9 @@ def train_fold(
                 f"fold_{fold}/val_iou_event": val_res["iou_event"],
                 f"fold_{fold}/val_f1_event_best": val_res["f1_event_best"],
                 f"fold_{fold}/val_recall": val_res["recall"],
+                f"fold_{fold}/val_ref_f1_event": val_res["ref_f1_event"],
+                f"fold_{fold}/val_ref_iou_event": val_res["ref_iou_event"],
+                f"fold_{fold}/val_ref_recall": val_res["ref_recall"],
             },
             global_step=epoch,
         )
@@ -289,10 +390,13 @@ def train_fold(
                 if not np.isnan(val_res["f1_event_best"])
                 else ""
             )
+            ref_txt = ""
+            if val_res["ref_available"] and not np.isnan(val_res["ref_f1_event"]):
+                ref_txt = f" | ref F1={val_res['ref_f1_event'] * 100:.2f}%"
             print(
                 f"  [Fold {fold} | Época {epoch:02d}/{args.epochs:02d}] "
                 f"train_loss={avg_train_loss:.4f} val_loss={val_res['val_loss']:.4f} "
-                f"{f1_txt}{best_txt}"
+                f"{f1_txt}{best_txt}{ref_txt}"
             )
 
     return best_metrics, checkpoint_path
@@ -303,6 +407,72 @@ def _nanmean(values: list[float]) -> float:
     arr = np.array(values, dtype=float)
     arr = arr[~np.isnan(arr)]
     return float(arr.mean()) if arr.size else float("nan")
+
+
+def evaluate_only(args: argparse.Namespace) -> int:
+    """
+    Reevalúa los checkpoints de un run existente sobre el conjunto de test, con
+    el umbral operativo ya congelado, y reporta las métricas contra las dos
+    etiquetas (target de ensamblaje y target de referencia).
+    """
+    ckpt_dir = Path(args.eval_only)
+    thr_file = ckpt_dir / "operational_threshold.json"
+    tau = DEFAULT_THRESHOLD
+    if thr_file.exists():
+        with open(thr_file, "r", encoding="utf-8") as f:
+            tau = float(json.load(f).get("operational_threshold", DEFAULT_THRESHOLD))
+
+    paths = sorted(ckpt_dir.glob("best_fold_*.pt"))
+    if not paths:
+        print(f"No hay checkpoints en {ckpt_dir}")
+        return 1
+
+    print("=" * 72)
+    print("REEVALUACIÓN DE CHECKPOINTS (sin reentrenar)")
+    print(f"Checkpoints: {ckpt_dir}")
+    print(f"Umbral operativo: {tau:.2f}")
+    print("=" * 72)
+
+    test_metrics: list[dict[str, dict[str, float] | None]] = []
+    for path in paths:
+        m = evaluate_checkpoint_on_test(
+            path,
+            index_path=args.index,
+            device=args.device,
+            threshold=tau,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+        )
+        if m:
+            test_metrics.append(m)
+
+    def _agg(key: str, field: str) -> float:
+        vals = [m[key][field] for m in test_metrics if m.get(key) is not None]
+        return _nanmean(vals) if vals else float("nan")
+
+    has_ref = any(m.get("reference") is not None for m in test_metrics)
+    print("\nTEST (fold -1) con el umbral congelado "
+          f"{tau:.2f} | {len(test_metrics)} checkpoints")
+    print("  Contra el target de ensamblaje:")
+    print(f"    F1:        {_pct(_agg('assembly', 'f1'))}")
+    print(f"    IoU:       {_pct(_agg('assembly', 'iou'))}")
+    print(f"    Precisión: {_pct(_agg('assembly', 'precision'))}")
+    print(f"    Recall:    {_pct(_agg('assembly', 'recall'))}")
+    if has_ref:
+        print("  Contra el target de referencia (crecimiento real entre rondas CEMS):")
+        print(f"    F1:        {_pct(_agg('reference', 'f1'))}")
+        print(f"    IoU:       {_pct(_agg('reference', 'iou'))}")
+        print(f"    Precisión: {_pct(_agg('reference', 'precision'))}")
+        print(f"    Recall:    {_pct(_agg('reference', 'recall'))}")
+    else:
+        print("  Contra el target de referencia: no disponible")
+    print("=" * 72)
+    return 0
+
+
+def _pct(value: float) -> str:
+    """Porcentaje legible, o 'n/d' si la métrica no es informativa."""
+    return "n/d" if np.isnan(value) else f"{value * 100:.2f}%"
 
 
 def main() -> int:
@@ -328,7 +498,19 @@ def main() -> int:
     parser.add_argument("--scar-corruption", type=float, default=0.15)
     parser.add_argument("--tag", default="propagation_convlstm_segformer")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument(
+        "--eval-only",
+        metavar="CHECKPOINT_DIR",
+        default=None,
+        help=(
+            "No entrena: reevalúa los checkpoints de un run existente sobre el "
+            "conjunto de test, con el umbral operativo ya congelado"
+        ),
+    )
     args = parser.parse_args()
+
+    if args.eval_only:
+        return evaluate_only(args)
 
     print("=" * 72)
     print("ENTRENAMIENTO DE MODELO DE PROPAGACIÓN (ConvLSTM + SegFormer)")
@@ -388,7 +570,7 @@ def main() -> int:
             )
 
         # ── Test con el umbral congelado ────────────────────────────────────
-        test_metrics: list[dict[str, float]] = []
+        test_metrics: list[dict[str, dict[str, float] | None]] = []
         for path in checkpoint_paths:
             m = evaluate_checkpoint_on_test(
                 path,
@@ -401,19 +583,48 @@ def main() -> int:
             if m:
                 test_metrics.append(m)
 
+        def _agg(key: str, field: str) -> float:
+            vals = [m[key][field] for m in test_metrics if m.get(key) is not None]
+            return _nanmean(vals) if vals else float("nan")
+
         test_summary = {
-            "f1": _nanmean([m["f1"] for m in test_metrics]),
-            "iou": _nanmean([m["iou"] for m in test_metrics]),
-            "precision": _nanmean([m["precision"] for m in test_metrics]),
-            "recall": _nanmean([m["recall"] for m in test_metrics]),
+            "f1": _agg("assembly", "f1"),
+            "iou": _agg("assembly", "iou"),
+            "precision": _agg("assembly", "precision"),
+            "recall": _agg("assembly", "recall"),
             "n_series_evaluated": int(
-                np.mean([m["n_series_evaluated"] for m in test_metrics])
+                np.mean([m["assembly"]["n_series_evaluated"] for m in test_metrics])
             ) if test_metrics else 0,
         }
+        has_ref = any(m.get("reference") is not None for m in test_metrics)
+        ref_summary = (
+            {
+                "f1": _agg("reference", "f1"),
+                "iou": _agg("reference", "iou"),
+                "precision": _agg("reference", "precision"),
+                "recall": _agg("reference", "recall"),
+                "n_series_evaluated": int(
+                    np.mean([
+                        m["reference"]["n_series_evaluated"]
+                        for m in test_metrics
+                        if m.get("reference") is not None
+                    ])
+                ),
+            }
+            if has_ref else None
+        )
         tracker.log_metrics(
             {f"test/f1@{tau:.2f}": test_summary["f1"], f"test/iou@{tau:.2f}": test_summary["iou"]},
             global_step=1,
         )
+        if ref_summary is not None:
+            tracker.log_metrics(
+                {
+                    f"test/ref_f1@{tau:.2f}": ref_summary["f1"],
+                    f"test/ref_iou@{tau:.2f}": ref_summary["iou"],
+                },
+                global_step=1,
+            )
 
         # Persistir el umbral junto a los checkpoints para la inferencia
         payload = {
@@ -422,9 +633,13 @@ def main() -> int:
             "threshold_spread": spread,
             "test_fold": TEST_FOLD,
             "test_metrics": test_summary,
+            "test_metrics_reference_target": ref_summary,
             "note": (
                 "El umbral se elige con los folds de validación y se congela aquí. "
-                "Para estimar área quemada NO hace falta umbral: suma las probabilidades."
+                "Para estimar área quemada NO hace falta umbral: suma las probabilidades. "
+                "Las métricas 'reference' son contra el crecimiento real entre rondas CEMS: "
+                "son el desempeño en propagación; las de ensamblaje son contra el target "
+                "que incluye quemado no detectado por TMB-S3."
             ),
         }
         threshold_file = tracker.checkpoint_dir / "operational_threshold.json"
@@ -445,11 +660,21 @@ def main() -> int:
         f"con el umbral congelado {tau:.2f}:"
     )
     if test_metrics:
-        print(f"  F1:        {test_summary['f1'] * 100:.2f}%")
-        print(f"  IoU:       {test_summary['iou'] * 100:.2f}%")
-        print(f"  Precisión: {test_summary['precision'] * 100:.2f}%")
-        print(f"  Recall:    {test_summary['recall'] * 100:.2f}%")
-        print(f"  Series evaluadas: {test_summary['n_series_evaluated']}")
+        print("  Contra el target de ensamblaje:")
+        print(f"    F1:        {test_summary['f1'] * 100:.2f}%")
+        print(f"    IoU:       {test_summary['iou'] * 100:.2f}%")
+        print(f"    Precisión: {test_summary['precision'] * 100:.2f}%")
+        print(f"    Recall:    {test_summary['recall'] * 100:.2f}%")
+        print(f"    Series evaluadas: {test_summary['n_series_evaluated']}")
+        if ref_summary is not None:
+            print("  Contra el target de referencia (crecimiento real entre rondas CEMS):")
+            print(f"    F1:        {ref_summary['f1'] * 100:.2f}%")
+            print(f"    IoU:       {ref_summary['iou'] * 100:.2f}%")
+            print(f"    Precisión: {ref_summary['precision'] * 100:.2f}%")
+            print(f"    Recall:    {ref_summary['recall'] * 100:.2f}%")
+            print(f"    Series evaluadas: {ref_summary['n_series_evaluated']}")
+        else:
+            print("  Contra el target de referencia: no disponible")
     else:
         print("  (sin muestras en el fold de test)")
     print("=" * 72)

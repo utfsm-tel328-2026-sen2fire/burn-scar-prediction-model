@@ -50,6 +50,9 @@ class BurnScarDataset(Dataset):
         horizon_days: (1,)           float32 (horizonte h en días hacia el objetivo)
         target:       (1, 64, 64)    float32 (lo NUEVO quemado en [f, f+h], valores en [0..1])
         mask:         (1, 64, 64)    uint8   (1 = píxel válido observado, 255 = ignorar/no analizado)
+        target_cems: (1, 64, 64)    float32 (crecimiento real entre rondas CEMS; referencia)
+        mask_cems:   (1, 64, 64)    uint8   (validez común a las dos rondas CEMS)
+        has_reference: (1,)          float32 (1 si la muestra trae target de referencia)
         meta:         dict           (sample_id, series_id, fold, etc.)
     """
 
@@ -111,6 +114,20 @@ class BurnScarDataset(Dataset):
         # 7. Máscara de validez -> shape (1, 64, 64)
         mask = torch.from_numpy(data["mask"].astype(np.uint8)).unsqueeze(0)
 
+        # 8. Target de referencia: crecimiento real entre rondas CEMS, con su
+        #    validez común. Puede no existir en datasets generados antes de
+        #    esta capacidad; en ese caso se marca como no disponible.
+        if "target_cems" in data.files:
+            target_cems = torch.from_numpy(data["target_cems"].astype(np.float32)).unsqueeze(0)
+            has_reference = 1.0
+        else:
+            target_cems = torch.zeros_like(target)
+            has_reference = 0.0
+        if "mask_cems" in data.files:
+            mask_cems = torch.from_numpy(data["mask_cems"].astype(np.uint8)).unsqueeze(0)
+        else:
+            mask_cems = torch.zeros_like(mask)
+
         sample = {
             "x_olci": x_olci,
             "x_dem": x_dem,
@@ -119,6 +136,9 @@ class BurnScarDataset(Dataset):
             "horizon_days": h_days,
             "target": target,
             "mask": mask,
+            "target_cems": target_cems,
+            "mask_cems": mask_cems,
+            "has_reference": torch.tensor([has_reference], dtype=torch.float32),
             "meta": info,
         }
 

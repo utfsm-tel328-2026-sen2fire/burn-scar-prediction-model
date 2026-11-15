@@ -118,9 +118,27 @@ class BaselineB0Persistence:
         return np.zeros_like(x_scar, dtype=np.float32)
 
 
+class BaselineAllBurned:
+    """
+    Trivial: predice que todo el mapa está quemado.
+
+    No es un modelo, sino la **escala mínima** de cada etiqueta: un F1 por
+    debajo de este valor no demuestra que nada se haya aprendido. Como el
+    target de ensamblaje tiene mucha más superficie que el crecimiento real,
+    este trivial puntúa distinto contra cada etiqueta y sirve de referencia
+    para no comparar F1 de etiquetas distintas entre sí.
+    """
+
+    def predict(
+        self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0
+    ) -> np.ndarray:
+        if isinstance(x_scar, Tensor):
+            x_scar = x_scar.cpu().numpy()
+        return np.ones_like(x_scar, dtype=np.float32)
+
+
 class BaselineB1RadialDilation:
     """B1: Dilatación radial isótropa de la cicatriz previa según el horizonte h."""
-
     def __init__(self, growth_rate_km_per_day: float = 0.6) -> None:
         self.rate_px_per_day = (growth_rate_km_per_day / 0.3)  # a 300 m/px -> 2 px/día
 

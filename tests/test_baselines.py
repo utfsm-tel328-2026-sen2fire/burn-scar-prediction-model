@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from burn_scar.baselines import (
+    BaselineAllBurned,
     BaselineB0Persistence,
     BaselineB1RadialDilation,
     aggregate_series_metrics,
@@ -17,6 +18,17 @@ def test_b0_persistence():
     assert pred.shape == (64, 64)
     # B0 predice cero crecimiento
     assert np.all(pred == 0.0)
+
+
+def test_trivial_todo_quemado():
+    """El trivial es la escala mínima de cada etiqueta: predice todo quemado."""
+    trivial = BaselineAllBurned()
+    scar = np.zeros((64, 64), dtype=np.float32)
+    scar[20:30, 20:30] = 1.0
+
+    pred = trivial.predict(scar, horizon_days=1.0)
+    assert pred.shape == (64, 64)
+    assert np.all(pred == 1.0)
 
 
 def test_b1_radial_dilation():

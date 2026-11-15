@@ -55,6 +55,34 @@ Véase `proposal.md` para la motivación. Restricciones y hechos medidos que con
 - **Razón**: son dos preguntas distintas; usar una como vara de la otra induce a interpretar un número que no significa eso. La vara del proyecto es B1 (10,80%), que usa la misma información disponible que el modelo.
 - **Alternativas consideradas**: (a) mantener la comparación con una nota al pie — descartado, el marco "lejos de upstream" persiste aunque se matice; (b) omitir la cifra sin explicar — descartado, el número es real y útil como referencia de la calidad del generador de cicatriz, solo que no como meta.
 
+## Resultados del diagnóstico
+
+Conjunto de test (fold -1, fuera de dominio), umbral operativo congelado en 0,10:
+
+| Modelo | F1 contra la etiqueta de ensamblaje | F1 contra la referencia (propagación real) |
+|---|---|---|
+| B0 persistencia | 0,00% | 0,00% |
+| B1 dilatación radial | 12,00% | 3,05% |
+| Trivial "todo quemado" | 11,34% | 3,17% |
+| **Modelo de producción** (`prop_v2`) | **33,80%** | **12,41%** |
+| Modelo entrenado con la referencia | 11,03% | 11,03% |
+
+**Conclusión (medición A y B de la Decisión 4):**
+
+1. El número publicable de **propagación es 12,41%**, no 33,80%. La diferencia (factor 2,7)
+   la introduce la etiqueta: la de ensamblaje tiene 7,7 veces más superficie que el
+   crecimiento real y una IoU de solo 0,112 con él, porque resta una fotografía de TMB-S3
+   que en el frente de fuego se queda corta.
+2. El modelo **sí aprende propagación**: 12,41% contra el crecimiento real frente al 3,17%
+   del trivial de esa misma etiqueta. Pero la vara contra el crecimiento real es ~3%, no
+   ~12%: contra la verdad, B1 y no hacer nada son prácticamente indistinguibles (3,05% frente
+   a 3,17%). El 12% del baseline de producción era engañoso.
+3. **Entrenar con la etiqueta limpia no mejora** (11,03% frente a 12,41% contra la misma
+   verdad). El target de referencia tiene 7× menos superficie y es proporcionalmente más
+   ruidoso, así que el problema no era solo la etiqueta.
+4. El recall es alto (80%) y la precisión baja (8%): el modelo acierta **dónde** se va a
+   quemar y sobreestima la **anchura** del frente. Ese es el siguiente frente de trabajo.
+
 ## Risks / Trade-offs
 
 - **[El crecimiento de referencia no es el crecimiento exacto en `[f, f+h]`]** → Mide entre rondas CEMS; la ronda de *f* está a ~1 día del frame de mediana y el horizonte mediano es 0,92 días. Como instrumento de diagnóstico el desajuste es aceptable; si el diagnóstico obliga a redefinir el target de producción, esa redefinición sí deberá tratar la frontera temporal con cuidado.
@@ -74,5 +102,14 @@ Véase `proposal.md` para la motivación. Restricciones y hechos medidos que con
 
 ## Open Questions
 
-- Si el diagnóstico muestra que el target de producción debe cambiar, ¿cuál sería la definición correcta **en operación**, donde no existe CEMS? La respuesta más probable es hacer la etiqueta consistente con la entrada (mismo generador en *f* y en el futuro), pero eso es un change propio con su propia evaluación.
-- ¿Merece la pena medir la calidad de TMB-S3 contra CEMS sobre nuestras series (el P5 pendiente) para saber si el 0,112 de IoU viene de la cicatriz o de la definición del crecimiento? Es independiente de este change y puede hacerse en paralelo.
+- La redefinición del target de producción queda **abierta con datos**: el diagnóstico ha
+  medido que la etiqueta de ensamblaje infla el desempeño ×2,7 y que el desempeño real en
+  propagación es 12,41%, pero que sustituirla por el crecimiento real entre rondas CEMS no
+  mejora el resultado. Las candidatas que quedan sobre la mesa son (a) mantener la
+  etiqueta actual y **publicar siempre las dos métricas**, (b) una etiqueta consistente con
+  la entrada (mismo generador en *f* y en el futuro, es decir el "oráculo de detección") y
+  (c) redefinir el producto para que el crecimiento en operación no dependa de CEMS. La
+  decisión requiere el producto, no solo el modelo.
+- ¿Merece la pena medir la calidad de TMB-S3 contra CEMS sobre nuestras series (el P5
+  pendiente) para saber si el 0,112 de IoU proviene de la cicatriz o de la definición del
+  crecimiento? Es independiente de este change y puede hacerse en paralelo.

@@ -104,7 +104,17 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
   4. Ejecuta TMB-S3 en GPU para obtener $\text{scar}(f) \in [0, 1]$.
   5. Calcula el target causal:
      $$\text{Target}(f, h) = \text{clip}\left(\text{CEMS}(r+1) - \text{scar}_{\text{TMB3}}(f),\, 0,\, 1\right)$$
-  6. Asigna cada muestra a su Fold geográfico correspondiente.
+  6. Calcula además el **target de referencia**, el crecimiento real entre la última ronda
+     CEMS conocida en el instante $f$ ($r_f$) y la ronda objetivo:
+     $$\text{Target}_{\text{ref}}(f) = \text{clip}\left(\text{CEMS}(r+1) - \text{CEMS}(r_f),\, 0,\, 1\right)$$
+     con la validez común a las dos rondas. El dataset guarda **las dos etiquetas**
+     (`target` y `target_cems`); la de ensamblaje tiene 7,7× más superficie que la de
+     referencia y una IoU de solo 0,112 con ella (ver [`operacion.md`](operacion.md) §9).
+  7. Asigna cada muestra a su Fold geográfico correspondiente.
+* **Modos de ensamblaje:** `--target-mode scar` (por defecto, el target de producción) y
+  `--target-mode cems` (diagnóstico: el target de propagación pasa a ser el crecimiento
+  real; **las entradas del modelo son idénticas en ambos modos**, solo cambia la etiqueta).
+  El modo se registra en `dataset_index.json`.
 * **Resultado:** 390 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` para auditar la ventana temporal).
 * **Verificación:** 358/390 muestras (91,8%) tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8).
 
