@@ -16,6 +16,25 @@ from torch.utils.data import Dataset, DataLoader
 
 DEFAULT_INDEX_PATH = Path("data/processed/dataset_index.json")
 
+# Codificación canónica de las máscaras de validez del paquete de muestra:
+# 1 = píxel evaluable, 255 = píxel ignorado (no observado en la ronda).
+# Es la misma convención que emite el rasterizador CEMS y que espera la
+# visualización (src/burn_scar/visualization.py).
+MASK_EVALUABLE = 1
+MASK_IGNORED = 255
+
+
+def _canonical_mask(mask: np.ndarray) -> np.ndarray:
+    """
+    Normaliza una máscara de validez a la codificación canónica del proyecto:
+    `1` = píxel evaluable, `255` = píxel ignorado.
+
+    Tolera los paquetes antiguos, en los que la validez común entre rondas se
+    emitía con `0` para los píxeles no evaluables.
+    """
+    m = np.asarray(mask).astype(np.uint8)
+    return np.where(m == MASK_EVALUABLE, MASK_EVALUABLE, MASK_IGNORED).astype(np.uint8)
+
 
 def resolve_loader_options(
     num_workers: int | None = None,
@@ -51,7 +70,7 @@ class BurnScarDataset(Dataset):
         target:       (1, 64, 64)    float32 (lo NUEVO quemado en [f, f+h], valores en [0..1])
         mask:         (1, 64, 64)    uint8   (1 = píxel válido observado, 255 = ignorar/no analizado)
         target_cems: (1, 64, 64)    float32 (crecimiento real entre rondas CEMS; referencia)
-        mask_cems:   (1, 64, 64)    uint8   (validez común a las dos rondas CEMS)
+        mask_cems:   (1, 64, 64)    uint8   (validez común a las dos rondas; misma codificación)
         has_reference: (1,)          float32 (1 si la muestra trae target de referencia)
         meta:         dict           (sample_id, series_id, fold, etc.)
     """
@@ -112,7 +131,9 @@ class BurnScarDataset(Dataset):
         target = torch.from_numpy(data["target"].astype(np.float32)).unsqueeze(0)
 
         # 7. Máscara de validez -> shape (1, 64, 64)
-        mask = torch.from_numpy(data["mask"].astype(np.uint8)).unsqueeze(0)
+        #    Codificación canónica: 1 = evaluable, 255 = ignorado. Se normaliza
+        #    al leer para tolerar paquetes antiguos (0 = no evaluable).
+        mask = torch.from_numpy(_canonical_mask(data["mask"])).unsqueeze(0)
 
         # 8. Target de referencia: crecimiento real entre rondas CEMS, con su
         #    validez común. Puede no existir en datasets generados antes de
@@ -124,9 +145,9 @@ class BurnScarDataset(Dataset):
             target_cems = torch.zeros_like(target)
             has_reference = 0.0
         if "mask_cems" in data.files:
-            mask_cems = torch.from_numpy(data["mask_cems"].astype(np.uint8)).unsqueeze(0)
+            mask_cems = torch.from_numpy(_canonical_mask(data["mask_cems"])).unsqueeze(0)
         else:
-            mask_cems = torch.zeros_like(mask)
+            mask_cems = torch.full_like(mask, MASK_IGNORED)
 
         sample = {
             "x_olci": x_olci,

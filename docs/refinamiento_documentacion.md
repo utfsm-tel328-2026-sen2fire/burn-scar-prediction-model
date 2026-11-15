@@ -150,6 +150,14 @@ Al iterar con `DataLoader`, cada elemento contiene:
 | `horizon_days` | `(B, 1)` | `float32` | $[0.0, 16.0]$ | Días hacia el objetivo $h$ |
 | `target` | `(B, 1, 64, 64)` | `float32` | $[0.0, 1.0]$ | **Lo nuevo quemado** entre $f$ y $f+h$ (Ground Truth) |
 | `mask` | `(B, 1, 64, 64)` | `uint8` | $\{1, 255\}$ | Máscara de validez (`1` = evaluable, `255` = ignorar) |
+| `target_cems` | `(B, 1, 64, 64)` | `float32` | $[0.0, 1.0]$ | Target de referencia: crecimiento real entre rondas CEMS |
+| `mask_cems` | `(B, 1, 64, 64)` | `uint8` | $\{1, 255\}$ | Validez común a las dos rondas CEMS (misma codificación que `mask`) |
+| `has_reference` | `(B, 1)` | `float32` | $\{0.0, 1.0\}$ | `1` si la muestra trae target de referencia |
+
+> **Codificación canónica de las máscaras:** `1` = píxel evaluable, `255` = píxel ignorado
+> (no observado en la ronda). Las dos máscaras usan la misma convención, también en el
+> modo de ensamblaje `cems`; el cargador normaliza los paquetes antiguos que usaban `0`
+> para "no evaluable".
 
 ### 6.2 Código de Entrenamiento
 ```python

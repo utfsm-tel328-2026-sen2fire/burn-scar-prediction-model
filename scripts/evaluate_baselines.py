@@ -12,6 +12,7 @@ escala de su propia etiqueta y no se comparen F1 de etiquetas distintas.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -29,8 +30,55 @@ from burn_scar.baselines import (
     compute_metrics_numpy,
 )
 
+# Umbral por defecto: el histórico de esta herramienta (predicciones binarias).
+DEFAULT_THRESHOLD = 0.5
 
-def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str, float]:
+
+def resolve_eval_threshold(
+    threshold: float | None,
+    run_dir: str | Path | None,
+) -> tuple[float, str]:
+    """
+    Resuelve el umbral de evaluación y declara su origen.
+
+    El umbral se aplica a la vez a la predicción y a la verdad. En los baselines
+    la predicción es binaria, así que el umbral no la cambia: determina qué
+    píxeles de la verdad cuentan como quemado y, con ello, qué muestras son
+    evaluables. Para que el F1 del modelo y el de los baselines se comparen
+    sobre la misma discretización, ambos deben medirse al mismo umbral: el
+    operativo congelado de un run, leído de `operational_threshold.json`.
+
+    Devuelve `(umbral, origen)`.
+    """
+    if threshold is not None and run_dir is not None:
+        raise ValueError(
+            "Indica el umbral de una sola forma: o `--threshold` explícito, o "
+            "`--operational-threshold-from` con el directorio de checkpoints de un run."
+        )
+
+    if threshold is not None:
+        return float(threshold), "explícito"
+
+    if run_dir is not None:
+        thr_file = Path(run_dir) / "operational_threshold.json"
+        if not thr_file.is_file():
+            raise FileNotFoundError(
+                f"No se encuentra el umbral operativo en {thr_file}. El directorio debe "
+                "contener el `operational_threshold.json` del run entrenado."
+            )
+        payload = json.loads(thr_file.read_text(encoding="utf-8"))
+        tau = float(payload["operational_threshold"])
+        return tau, f"umbral operativo del run {run_dir}"
+
+    return DEFAULT_THRESHOLD, "por defecto (0,50)"
+
+
+def evaluate_model(
+    dataset: BurnScarDataset,
+    model,
+    model_name: str,
+    threshold: float = DEFAULT_THRESHOLD,
+) -> dict[str, float]:
     """Evalúa un baseline promediando métricas por serie/evento (docs/dataset.md §10)."""
     series_metrics: dict[str, list[dict[str, float]]] = defaultdict(list)
     series_metrics_ref: dict[str, list[dict[str, float]]] = defaultdict(list)
@@ -46,14 +94,14 @@ def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str
         mask = sample["mask"].squeeze(0).numpy()
 
         pred = model.predict(x_scar, horizon_days=h_days)
-        m = compute_metrics_numpy(pred, target, mask, threshold=0.5)
+        m = compute_metrics_numpy(pred, target, mask, threshold=threshold)
         series_metrics[series_id].append(m)
 
         # Target de referencia (crecimiento real entre rondas CEMS), si existe
         if float(sample["has_reference"].item()) > 0:
             ref_target = sample["target_cems"].squeeze(0).numpy()
             ref_mask = sample["mask_cems"].squeeze(0).numpy()
-            mr = compute_metrics_numpy(pred, ref_target, ref_mask, threshold=0.5)
+            mr = compute_metrics_numpy(pred, ref_target, ref_mask, threshold=threshold)
             series_metrics_ref[series_id].append(mr)
 
     # Promedio por serie primero (D10: un evento = una serie), ignorando NaN
@@ -67,6 +115,7 @@ def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str
         "n_series": agg["n_series_total"],
         "n_series_evaluated": agg["n_series_evaluated"],
         "n_samples": len(dataset),
+        "n_samples_evaluated": agg["n_samples_evaluated"],
         "f1_event_mean": agg["f1_event_mean"],
         "f1_event_std": agg["f1_event_std"],
         "iou_event_mean": agg["iou_event_mean"],
@@ -78,6 +127,7 @@ def evaluate_model(dataset: BurnScarDataset, model, model_name: str) -> dict[str
         "ref_precision_mean": ref_agg["precision_event_mean"] if ref_agg else float("nan"),
         "ref_recall_mean": ref_agg["recall_event_mean"] if ref_agg else float("nan"),
         "ref_n_series_evaluated": ref_agg["n_series_evaluated"] if ref_agg else 0,
+        "ref_n_samples_evaluated": ref_agg["n_samples_evaluated"] if ref_agg else 0,
     }
     return out
 
@@ -89,11 +139,46 @@ def _pct(value: float) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluación de Baselines B0/B1")
     parser.add_argument("--index", default="data/processed/dataset_index.json")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help=(
+            "Umbral de evaluación (se aplica a la predicción y a la verdad). "
+            "Por defecto 0,50."
+        ),
+    )
+    parser.add_argument(
+        "--operational-threshold-from",
+        default=None,
+        metavar="CHECKPOINT_DIR",
+        help=(
+            "Directorio de checkpoints de un run entrenado: usa su umbral operativo "
+            "congelado (operational_threshold.json) para comparar con el modelo."
+        ),
+    )
     args = parser.parse_args()
+
+    try:
+        threshold, threshold_source = resolve_eval_threshold(
+            args.threshold, args.operational_threshold_from
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}")
+        return 1
 
     print("=" * 72)
     print("EVALUACIÓN DE BASELINES DE REFERENCIA (docs/dataset.md §9-§10)")
-    print("Métrica: Promedio por evento sobre píxeles válidos (umbral 0.5)")
+    print(f"Métrica: Promedio por evento sobre píxeles válidos (umbral {threshold:.2f})")
+    print(f"Umbral: {threshold:.2f} ({threshold_source})")
+    print(
+        "Ojo: los baselines predicen de forma binaria, así que el umbral no cambia su "
+        "predicción;"
+    )
+    print(
+        "  determina qué píxeles de la verdad cuentan como quemado y qué muestras son "
+        "evaluables."
+    )
     print("=" * 72)
 
     # Evaluar sobre el conjunto mediterráneo (folds 0..4) y sobre el test
@@ -114,10 +199,11 @@ def main() -> int:
         print(f"# {nombre_conjunto}")
         print("#" * 72)
         for model, name in models:
-            res = evaluate_model(dataset, model, name)
+            res = evaluate_model(dataset, model, name, threshold=threshold)
             print(f"\nResultados: {name}")
             print(f"  Series evaluadas:  {res['n_series_evaluated']}/{res['n_series']} "
                   f"({res['n_samples']} muestras)")
+            print(f"  Muestras evaluables: {res['n_samples_evaluated']}/{res['n_samples']}")
             print(f"  F1 (Macro-evento): {_pct(res['f1_event_mean'])} ± "
                   f"{_pct(res['f1_event_std'])}")
             print(f"  IoU (Jaccard):     {_pct(res['iou_event_mean'])}")
@@ -126,6 +212,7 @@ def main() -> int:
             if res["ref_available"]:
                 print("  --- contra el target de referencia (crecimiento real CEMS) ---")
                 print(f"  Series evaluadas:  {res['ref_n_series_evaluated']}/{res['n_series']}")
+                print(f"  Muestras evaluables: {res['ref_n_samples_evaluated']}/{res['n_samples']}")
                 print(f"  F1 (Macro-evento): {_pct(res['ref_f1_event_mean'])}")
                 print(f"  IoU (Jaccard):     {_pct(res['ref_iou_event_mean'])}")
                 print(f"  Precisión:         {_pct(res['ref_precision_mean'])}")

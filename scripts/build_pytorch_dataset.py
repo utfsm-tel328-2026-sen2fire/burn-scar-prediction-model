@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import torch
+from burn_scar.dataset import MASK_EVALUABLE, MASK_IGNORED
 from burn_scar.models import load_tmb_s3, predict_burn_scar
 
 # Una adquisición con más de este porcentaje de píxeles sin dato se descarta
@@ -54,8 +55,11 @@ def _reference_growth(
 
     Devuelve (target_cems, mask_cems), donde mask_cems es la validez común a
     las dos rondas. Si la serie no tiene ronda previa, devuelve el crecimiento a
-    cero y una máscara vacía: la muestra se conserva, pero sin target de
-    referencia.
+    cero y una máscara íntegramente no evaluable: la muestra se conserva, pero
+    sin target de referencia.
+
+    La validez común usa la codificación canónica del proyecto: 1 = píxel
+    evaluable, 255 = píxel ignorado (no observado en alguna de las dos rondas).
     """
     f_idx: int | None = None
     for i, iso in enumerate(round_times):
@@ -67,7 +71,7 @@ def _reference_growth(
     if f_idx is None:
         return (
             np.zeros(all_burnt[target_idx].shape, dtype=np.float32),
-            np.zeros(all_valid[target_idx].shape, dtype=np.uint8),
+            np.full(all_valid[target_idx].shape, MASK_IGNORED, dtype=np.uint8),
         )
 
     growth = np.clip(
@@ -75,7 +79,8 @@ def _reference_growth(
         0.0,
         1.0,
     )
-    common = ((all_valid[target_idx] == 1) & (all_valid[f_idx] == 1)).astype(np.uint8)
+    both_valid = (all_valid[target_idx] == 1) & (all_valid[f_idx] == 1)
+    common = np.where(both_valid, MASK_EVALUABLE, MASK_IGNORED).astype(np.uint8)
     return growth, common
 
 
@@ -329,7 +334,9 @@ def main() -> int:
                 mask_out = mask_cems
             else:
                 target_out = target_delta
-                mask_out = gt_target_valid.astype(np.uint8)
+                mask_out = np.where(
+                    gt_target_valid == 1, MASK_EVALUABLE, MASK_IGNORED
+                ).astype(np.uint8)
 
             # Guardar muestra en disco
             sample_file = os.path.join(args.samples_out, f"{sample_id}.npz")

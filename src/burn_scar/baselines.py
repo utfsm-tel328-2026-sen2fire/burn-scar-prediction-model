@@ -82,18 +82,25 @@ def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) 
     """
     Promedio por serie/evento (D10) ignorando las métricas no informativas (NaN).
 
-    Devuelve además cuántas series han podido evaluarse, para detectar el caso
-    degenerado en el que el target no contiene quemado (métricas sin sentido).
+    Devuelve además cuántas series y cuántas muestras han podido evaluarse, para
+    detectar el caso degenerado en el que el target no contiene quemado (métricas
+    sin sentido). Una muestra es evaluable cuando su métrica es informativa.
     """
     keys = ("f1", "iou", "precision", "recall")
     per_series: dict[str, list[float]] = {k: [] for k in keys}
 
+    n_samples_total = 0
+    n_samples_evaluated = 0
     for m_list in series_metrics.values():
+        n_samples_total += len(m_list)
         for k in keys:
             vals = np.array([m[k] for m in m_list], dtype=float)
             vals = vals[~np.isnan(vals)]
             if vals.size:
                 per_series[k].append(float(vals.mean()))
+        # Una muestra es evaluable si su F1 es informativo (no NaN).
+        f1_vals = np.array([m["f1"] for m in m_list], dtype=float)
+        n_samples_evaluated += int((~np.isnan(f1_vals)).sum())
 
     out = {
         f"{k}_event_mean": (float(np.mean(v)) if v else float("nan"))
@@ -104,6 +111,8 @@ def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) 
     )
     out["n_series_evaluated"] = len(per_series["f1"])
     out["n_series_total"] = len(series_metrics)
+    out["n_samples_evaluated"] = n_samples_evaluated
+    out["n_samples_total"] = n_samples_total
     return out
 
 

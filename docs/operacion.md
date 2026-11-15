@@ -310,28 +310,46 @@ acertar.
 
 ### El resultado del diagnóstico
 
-Conjunto de test (fold -1, fuera de dominio), umbral operativo congelado en 0,10:
+Conjunto de test (fold -1, fuera de dominio), **umbral operativo congelado en 0,10** para
+todo lo que se compara (el modelo y los baselines, con la misma agregación por evento y el
+mismo subconjunto de muestras evaluables):
 
 | Modelo | F1 contra la etiqueta de ensamblaje | F1 contra la **referencia** (propagación real) |
 |---|---|---|
 | B0 persistencia | 0,00% | 0,00% |
-| B1 dilatación radial | 12,00% | 3,05% |
-| Trivial "todo quemado" | 11,34% | 3,17% |
+| B1 dilatación radial | 15,80% | 6,88% |
+| Trivial "todo quemado" | 16,03% | 7,46% |
 | **Modelo de producción** (`prop_v2`) | **33,80%** | **12,41%** |
 | Modelo entrenado con la referencia | 11,03% | 11,03% |
+
+El número de **muestras evaluables** (las que tienen métrica informativa) depende de la
+etiqueta y del umbral:
+
+| Etiqueta | Umbral 0,50 (baselines) | Umbral 0,10 (operativo) |
+|---|---|---|
+| De ensamblaje | 78/78 | 78/78 |
+| De referencia | 54/78 | 76/78 |
+
+Contra la etiqueta de referencia, que tiene 7,7× menos superficie, a umbral 0,50 la mayoría
+de las muestras no tienen quemado en la verdad y por tanto **no son medibles**; a umbral
+0,10 (el operativo) casi todas lo son. Por eso los números de la tabla se miden todos al
+umbral operativo: a 0,50 los mismos baselines sacan 12,00% (ensamblaje) y 3,05%
+(referencia), pero sobre 54 de las 78 muestras, es decir sobre otro subconjunto y, por
+tanto, otro número.
 
 Cómo leerlo:
 
 - **El número publicable de propagación es 12,41%**, no 33,80%. Este último mide desempeño
   contra una etiqueta que incluye quemado no detectado.
-- **El modelo sí aprende**: contra el crecimiento real saca 12,41%, cuatro veces el trivial
-  de esa misma etiqueta (3,17%). Pero la vara real contra el crecimiento real es ~3%, no
-  ~12%: **contra la verdad, B1 y no hacer nada son prácticamente igual** (3,05% frente a
-  3,17%).
+- **El modelo sí aprende, pero menos de lo que parecía**: contra el crecimiento real saca
+  12,41%, **1,66× el trivial de esa misma etiqueta y ese mismo umbral** (7,46%). La vara
+  real contra el crecimiento real es **~7,5%**, no ~3%: contra la verdad, B1 (6,88%) y no
+  hacer nada (7,46%) siguen siendo prácticamente indistinguibles, y el modelo está por
+  encima de los dos, pero no por un orden de magnitud.
 - **Entrenar con la etiqueta limpia no mejora** (11,03% frente a 12,41% contra la misma
-  verdad). El target de referencia tiene 7× menos superficie y es más ruidoso en términos
-  relativos, así que no es un juego de suma cero: el problema de propagación es genuinamente
-  difícil.
+  verdad, mismo umbral y mismo subconjunto). El target de referencia tiene 7× menos
+  superficie y es más ruidoso en términos relativos, así que no es un juego de suma cero: el
+  problema de propagación es genuinamente difícil.
 - **Recall 80% con precisión 8%**: el modelo acierta *dónde* se va a quemar, pero
   sobreestima la anchura del frente. Es el siguiente frente de trabajo.
 
@@ -342,7 +360,13 @@ Cómo leerlo:
 uv run --extra rocm python scripts/build_pytorch_dataset.py
 
 # 2. Ver los números contra las dos etiquetas y el trivial
+#    (por defecto, umbral 0,50)
 uv run --extra rocm python scripts/evaluate_baselines.py
+
+# 2b. Los mismos baselines medidos al umbral operativo del run, que es como
+#     se comparan con el modelo (mismo umbral, mismas muestras evaluables)
+uv run --extra rocm python scripts/evaluate_baselines.py \
+      --operational-threshold-from checkpoints/<run>
 
 # 3. Reevaluar un run existente sin reentrenar
 uv run --extra rocm python scripts/train_propagation.py --eval-only checkpoints/<run>
@@ -361,6 +385,46 @@ uv run --extra rocm python scripts/train_propagation.py --epochs 15 \
 mínima (el trivial "todo quemado"), que es la referencia con la que hay que leerlo.
 Por eso `evaluate_baselines.py` imprime siempre el trivial al lado.
 
+**Y un F1 a un umbral no se compara con un F1 a otro umbral.** `evaluate_baselines.py`
+evalúa por defecto a umbral 0,50 (donde las predicciones binarias de B0/B1 y el trivial son
+naturales), mientras que el modelo se evalúa al **umbral operativo congelado** (0,10 en el run
+actual). Los dos conjuntos de números se apoyan además en subconjuntos de muestras distintos:
+contra la etiqueta de referencia hay 54/78 muestras evaluables a 0,50 y 76/78 a 0,10. Para
+comparar modelo y baselines hay que ponerlos al mismo umbral, que es lo que hace
+`--operational-threshold-from <dir_de_checkpoints>`: lee el umbral congelado del run y lo
+aplica a los baselines, de modo que ambos se miden sobre la misma discretización de la
+verdad y las mismas muestras evaluables. La tabla de la sección anterior está medida al
+umbral operativo para todos.
+
+### Qué cuenta como evaluable, y qué significan las máscaras
+
+Las dos máscaras del paquete de muestra (`mask` y `mask_cems`) usan la **misma codificación
+canónica**: `1` = píxel evaluable, `255` = píxel ignorado (no observado en la ronda). Es la
+convención que emite el rasterizador CEMS y la que espera la visualización, donde las zonas
+`255` se atenúan en el panel.
+
+Una **muestra es evaluable** cuando su métrica es informativa, es decir cuando la verdad
+contiene quemado por encima del umbral de evaluación. Si no lo hay, el F1 es `NaN`: no es un
+0, es "no se puede medir". Por eso los informes informan de los tres números:
+
+- **Series evaluables**: cuántas series han podido medirse (el promedio es por evento).
+- **Muestras evaluables**: cuántas muestras del conjunto tienen métrica informativa.
+- **Total**: cuántas muestras había en el conjunto evaluado.
+
+Un subconjunto con pocas muestras evaluables está inflando su promedio por evento, así que
+el recuento es parte del número, no un detalle del informe. Cuando una muestra no tiene
+ronda CEMS previa, su validez común es íntegramente `255` y su métrica contra la etiqueta de
+referencia no es informativa: cuenta como no evaluable, no como un cero.
+
+Medido sobre los conjuntos del proyecto:
+
+| Conjunto | Etiqueta | Series evaluables | Muestras evaluables (umbral 0,50) |
+|---|---|---|---|
+| Validación (folds 0-4, 312 muestras) | De ensamblaje | 33/33 | 280/312 |
+| Validación (folds 0-4, 312 muestras) | De referencia | 27/33 | 205/312 |
+| Test (fold -1, 78 muestras) | De ensamblaje | 8/8 | 78/78 |
+| Test (fold -1, 78 muestras) | De referencia | 8/8 | 54/78 |
+
 ### Sobre la comparación con TMB-S3 upstream
 
 TMB-S3 upstream evalúa **detección** de quemado: mira imágenes donde el fuego ya está y
@@ -369,8 +433,9 @@ etiqueta qué está quemado, con etiquetas derivadas de MCD64A1 y una regla "OR"
 
 Este proyecto evalúa **pronóstico**: predecir qué se quemará en las próximas horas, con la
 etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que el 69,45 no es una
-meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **B1** (12,00%
-contra la etiqueta de ensamblaje, 3,05% contra la referencia), porque usa la misma
+meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **el trivial "todo
+quemado"** y **B1**, medidos al mismo umbral operativo que el modelo (16,03% y 15,80%
+contra la etiqueta de ensamblaje; 7,46% y 6,88% contra la referencia), porque usan la misma
 información disponible que el modelo.
 
 Donde el número de upstream sí es útil es como referencia de la **calidad del generador de

@@ -71,7 +71,83 @@ def test_dataset_expone_target_de_referencia():
     assert float(sample["has_reference"].item()) == 1.0
     assert float(sample["target_cems"].min()) >= 0.0
     assert float(sample["target_cems"].max()) <= 1.0
-    assert set(torch.unique(sample["mask_cems"]).tolist()) <= {0, 1}
+    # Codificación canónica: 1 = evaluable, 255 = ignorado
+    assert set(torch.unique(sample["mask_cems"]).tolist()) <= {1, 255}
+
+
+def test_mascaras_usan_la_codificacion_canonica(tmp_path):
+    """Ambas máscaras solo contienen 1 (evaluable) y 255 (ignorado)."""
+    import numpy as np
+
+    mask = np.array([[1, 255], [1, 1]], dtype=np.uint8)
+    mask_cems = np.array([[255, 255], [1, 1]], dtype=np.uint8)
+
+    sample = _write_sample(tmp_path, mask=mask, mask_cems=mask_cems)
+
+    assert set(torch.unique(sample["mask"]).tolist()) <= {1, 255}
+    assert set(torch.unique(sample["mask_cems"]).tolist()) <= {1, 255}
+    assert sample["mask_cems"][0, 0, 0].item() == 255
+    assert sample["mask_cems"][0, 1, 1].item() == 1
+
+
+def test_cargador_normaliza_mascaras_antiguas(tmp_path):
+    """Un paquete antiguo con 0 = no evaluable se carga como 255 = ignorado."""
+    import numpy as np
+
+    mask = np.array([[1, 0], [255, 1]], dtype=np.uint8)
+    mask_cems = np.array([[1, 0], [0, 0]], dtype=np.uint8)
+
+    sample = _write_sample(tmp_path, mask=mask, mask_cems=mask_cems)
+
+    assert set(torch.unique(sample["mask"]).tolist()) <= {1, 255}
+    assert set(torch.unique(sample["mask_cems"]).tolist()) <= {1, 255}
+    assert sample["mask"][0, 0, 1].item() == 255
+    assert sample["mask_cems"][0, 1, 1].item() == 255
+
+
+def test_muestra_sin_ronda_previa_marca_la_validez_como_no_evaluable(tmp_path):
+    """Sin ronda CEMS previa, la validez común es íntegramente no evaluable."""
+    import numpy as np
+
+    sample = _write_sample(
+        tmp_path,
+        mask=np.ones((64, 64), dtype=np.uint8),
+        mask_cems=np.full((64, 64), 255, dtype=np.uint8),
+    )
+
+    assert set(torch.unique(sample["mask_cems"]).tolist()) == {255}
+
+
+def _write_sample(tmp_path, *, mask, mask_cems=None):
+    """Escribe una muestra y su índice, y la devuelve cargada por el dataset."""
+    import numpy as np
+
+    payload = {
+        "x_olci": np.zeros((7, 5, 64, 64), dtype=np.float16),
+        "x_dem": np.zeros((64, 64), dtype=np.float32),
+        "x_worldcover": np.zeros((64, 64), dtype=np.uint8),
+        "x_scar": np.zeros((64, 64), dtype=np.float16),
+        "horizon_days": np.float32(1.0),
+        "target": np.zeros((64, 64), dtype=np.float16),
+        "mask": mask,
+    }
+    if mask_cems is not None:
+        payload["target_cems"] = np.zeros((64, 64), dtype=np.float16)
+        payload["mask_cems"] = mask_cems
+
+    sample_file = tmp_path / "muestra.npz"
+    np.savez_compressed(sample_file, **payload)
+    index_file = tmp_path / "index.json"
+    index_file.write_text(json.dumps({
+        "samples": [{
+            "sample_id": "muestra",
+            "series_id": "serie",
+            "file": str(sample_file),
+            "fold": 0,
+            "horizon_days": 1.0,
+        }]
+    }))
+    return BurnScarDataset(index_path=index_file)[0]
 
 
 def test_dataset_tolera_muestras_sin_target_de_referencia(tmp_path):

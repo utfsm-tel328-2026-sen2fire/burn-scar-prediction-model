@@ -2,10 +2,22 @@
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 import torch
 
 from burn_scar.models import BurnScarPropagationModel, corrupt_scar, masked_bce_dice_loss
+
+
+def _load_train_script():
+    """Carga `scripts/train_propagation.py` como módulo para probar su evaluación."""
+    path = Path(__file__).resolve().parents[1] / "scripts" / "train_propagation.py"
+    spec = importlib.util.spec_from_file_location("train_propagation", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def test_corrupt_scar_bounds_and_shape() -> None:
@@ -74,4 +86,59 @@ def test_masked_loss_derives_pos_weight_from_batch_imbalance() -> None:
     # Una sobrescritura explícita se respeta
     loss_w = masked_bce_dice_loss(logits, target, mask, pos_weight=1.0)
     assert float(loss_w) != pytest.approx(float(loss_auto), abs=1e-5)
+
+
+def _fake_batch(*, with_burn: bool, with_reference: bool) -> dict:
+    """Lote sintético con una muestra cuya verdad tiene quemado o está vacía."""
+    B, T, H, W = 1, 7, 64, 64
+    target = torch.zeros(B, 1, H, W)
+    if with_burn:
+        target[:, :, 20:40, 20:40] = 1.0
+    mask = torch.ones(B, 1, H, W, dtype=torch.uint8)
+    return {
+        "x_olci": torch.zeros(B, T, 5, H, W),
+        "x_dem": torch.zeros(B, 1, H, W),
+        "x_worldcover": torch.zeros(B, 1, H, W),
+        "x_scar": torch.zeros(B, 1, H, W),
+        "horizon_days": torch.ones(B, 1),
+        "target": target,
+        "mask": mask,
+        "target_cems": target.clone() if with_reference else torch.zeros(B, 1, H, W),
+        "mask_cems": mask.clone(),
+        "has_reference": torch.ones(B, 1) if with_reference else torch.zeros(B, 1),
+        "meta": {"series_id": ["serie_a"], "sample_id": ["m1"], "fold": [0]},
+    }
+
+
+def test_evaluate_fold_informa_de_muestras_evaluables() -> None:
+    """El informe de fold distingue muestras informativas de las que no lo son."""
+    module = _load_train_script()
+    model = BurnScarPropagationModel(olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0)
+    loader = [
+        _fake_batch(with_burn=True, with_reference=True),
+        _fake_batch(with_burn=False, with_reference=True),
+    ]
+
+    res = module.evaluate_fold(model, loader, device="cpu")
+
+    # Dos muestras: solo la que tiene quemado en la verdad es evaluable.
+    assert res["n_samples"] == 2
+    assert res["n_samples_evaluated"] == 1
+    assert res["per_threshold"][0.5]["n_samples_total"] == 2
+    assert res["per_threshold"][0.5]["n_samples_evaluated"] == 1
+    assert res["ref_n_samples_evaluated"] == 1
+    assert res["ref_n_samples_total"] == 2
+
+
+def test_evaluate_fold_sin_target_de_referencia() -> None:
+    """Sin target de referencia, el informe lo marca como no disponible."""
+    module = _load_train_script()
+    model = BurnScarPropagationModel(olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0)
+    loader = [_fake_batch(with_burn=True, with_reference=False)]
+
+    res = module.evaluate_fold(model, loader, device="cpu")
+
+    assert res["ref_available"] is False
+    assert res["ref_per_threshold"] == {}
+    assert res["n_samples_evaluated"] == 1
 

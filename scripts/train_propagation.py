@@ -138,6 +138,8 @@ def evaluate_fold(
         "best_threshold": float(best_th),
         "n_series": at_default["n_series_total"],
         "n_series_evaluated": at_default["n_series_evaluated"],
+        "n_samples": at_default["n_samples_total"],
+        "n_samples_evaluated": at_default["n_samples_evaluated"],
         # Métricas por umbral, para poder evaluar con un umbral ya congelado
         "per_threshold": {
             th: {
@@ -146,6 +148,8 @@ def evaluate_fold(
                 "precision": per_threshold[th]["precision_event_mean"],
                 "recall": per_threshold[th]["recall_event_mean"],
                 "n_series_evaluated": per_threshold[th]["n_series_evaluated"],
+                "n_samples_evaluated": per_threshold[th]["n_samples_evaluated"],
+                "n_samples_total": per_threshold[th]["n_samples_total"],
             }
             for th in EVAL_THRESHOLDS
         },
@@ -156,6 +160,8 @@ def evaluate_fold(
         "ref_precision": ref_at_default.get("precision_event_mean", float("nan")),
         "ref_recall": ref_at_default.get("recall_event_mean", float("nan")),
         "ref_n_series_evaluated": ref_at_default.get("n_series_evaluated", 0),
+        "ref_n_samples_evaluated": ref_at_default.get("n_samples_evaluated", 0),
+        "ref_n_samples_total": ref_at_default.get("n_samples_total", 0),
         "ref_f1_event_best": ref_at_best.get("f1_event_mean", float("nan")),
         "ref_best_threshold": float(ref_best_th),
         "ref_per_threshold": {
@@ -165,6 +171,8 @@ def evaluate_fold(
                 "precision": per_threshold_ref[th]["precision_event_mean"],
                 "recall": per_threshold_ref[th]["recall_event_mean"],
                 "n_series_evaluated": per_threshold_ref[th]["n_series_evaluated"],
+                "n_samples_evaluated": per_threshold_ref[th]["n_samples_evaluated"],
+                "n_samples_total": per_threshold_ref[th]["n_samples_total"],
             }
             for th in EVAL_THRESHOLDS
         } if ref_available else {},
@@ -213,6 +221,8 @@ def evaluate_checkpoint_on_test(
             "precision": metrics["precision"],
             "recall": metrics["recall"],
             "n_series_evaluated": metrics["n_series_evaluated"],
+            "n_samples_evaluated": metrics["n_samples_evaluated"],
+            "n_samples_total": metrics["n_samples_total"],
         },
         "reference": None if ref_metrics is None else {
             "f1": ref_metrics["f1"],
@@ -220,6 +230,8 @@ def evaluate_checkpoint_on_test(
             "precision": ref_metrics["precision"],
             "recall": ref_metrics["recall"],
             "n_series_evaluated": ref_metrics["n_series_evaluated"],
+            "n_samples_evaluated": ref_metrics["n_samples_evaluated"],
+            "n_samples_total": ref_metrics["n_samples_total"],
         },
     }
 
@@ -269,6 +281,8 @@ def _metrics_at_threshold(
             "precision": agg["precision_event_mean"],
             "recall": agg["recall_event_mean"],
             "n_series_evaluated": agg["n_series_evaluated"],
+            "n_samples_evaluated": agg["n_samples_evaluated"],
+            "n_samples_total": agg["n_samples_total"],
         },
         "reference": None,
     }
@@ -280,6 +294,8 @@ def _metrics_at_threshold(
             "precision": agg_ref["precision_event_mean"],
             "recall": agg_ref["recall_event_mean"],
             "n_series_evaluated": agg_ref["n_series_evaluated"],
+            "n_samples_evaluated": agg_ref["n_samples_evaluated"],
+            "n_samples_total": agg_ref["n_samples_total"],
         }
     return out
 
@@ -458,12 +474,20 @@ def evaluate_only(args: argparse.Namespace) -> int:
     print(f"    IoU:       {_pct(_agg('assembly', 'iou'))}")
     print(f"    Precisión: {_pct(_agg('assembly', 'precision'))}")
     print(f"    Recall:    {_pct(_agg('assembly', 'recall'))}")
+    print(
+        f"    Muestras evaluables: {_agg('assembly', 'n_samples_evaluated'):.0f}"
+        f"/{_agg('assembly', 'n_samples_total'):.0f}"
+    )
     if has_ref:
         print("  Contra el target de referencia (crecimiento real entre rondas CEMS):")
         print(f"    F1:        {_pct(_agg('reference', 'f1'))}")
         print(f"    IoU:       {_pct(_agg('reference', 'iou'))}")
         print(f"    Precisión: {_pct(_agg('reference', 'precision'))}")
         print(f"    Recall:    {_pct(_agg('reference', 'recall'))}")
+        print(
+            f"    Muestras evaluables: {_agg('reference', 'n_samples_evaluated'):.0f}"
+            f"/{_agg('reference', 'n_samples_total'):.0f}"
+        )
     else:
         print("  Contra el target de referencia: no disponible")
     print("=" * 72)
@@ -595,6 +619,12 @@ def main() -> int:
             "n_series_evaluated": int(
                 np.mean([m["assembly"]["n_series_evaluated"] for m in test_metrics])
             ) if test_metrics else 0,
+            "n_samples_evaluated": int(
+                np.mean([m["assembly"]["n_samples_evaluated"] for m in test_metrics])
+            ) if test_metrics else 0,
+            "n_samples_total": int(
+                np.mean([m["assembly"]["n_samples_total"] for m in test_metrics])
+            ) if test_metrics else 0,
         }
         has_ref = any(m.get("reference") is not None for m in test_metrics)
         ref_summary = (
@@ -606,6 +636,20 @@ def main() -> int:
                 "n_series_evaluated": int(
                     np.mean([
                         m["reference"]["n_series_evaluated"]
+                        for m in test_metrics
+                        if m.get("reference") is not None
+                    ])
+                ),
+                "n_samples_evaluated": int(
+                    np.mean([
+                        m["reference"]["n_samples_evaluated"]
+                        for m in test_metrics
+                        if m.get("reference") is not None
+                    ])
+                ),
+                "n_samples_total": int(
+                    np.mean([
+                        m["reference"]["n_samples_total"]
                         for m in test_metrics
                         if m.get("reference") is not None
                     ])
@@ -648,12 +692,23 @@ def main() -> int:
         print(f"\nUmbral y métricas de test guardados en: {threshold_file}")
 
     elapsed = time.time() - t0
+    mean_samples_eval = _nanmean(
+        [r["n_samples_evaluated"] for r in fold_results if "n_samples_evaluated" in r]
+    )
+    mean_samples_total = _nanmean(
+        [r["n_samples"] for r in fold_results if "n_samples" in r]
+    )
     print("\n" + "=" * 72)
     print(f"RESUMEN CV ({len(fold_results)} folds) en {elapsed:.1f} s:")
     print(f"  F1 (Macro-evento): {mean_f1 * 100:.2f}% ± {std_f1 * 100:.2f}%")
     print(f"  IoU (Jaccard):     {mean_iou * 100:.2f}%")
     print(f"  F1 (mejor umbral): {mean_f1_best * 100:.2f}%")
     print(f"  Recall:            {mean_recall * 100:.2f}%")
+    if not np.isnan(mean_samples_eval):
+        print(
+            f"  Muestras evaluables (media por fold): {mean_samples_eval:.0f}"
+            f"/{mean_samples_total:.0f}"
+        )
     print("-" * 72)
     print(
         f"EVALUACIÓN EN TEST (fold {TEST_FOLD}, fuera de dominio) "
@@ -666,6 +721,10 @@ def main() -> int:
         print(f"    Precisión: {test_summary['precision'] * 100:.2f}%")
         print(f"    Recall:    {test_summary['recall'] * 100:.2f}%")
         print(f"    Series evaluadas: {test_summary['n_series_evaluated']}")
+        print(
+            f"    Muestras evaluables: {test_summary['n_samples_evaluated']}"
+            f"/{test_summary['n_samples_total']}"
+        )
         if ref_summary is not None:
             print("  Contra el target de referencia (crecimiento real entre rondas CEMS):")
             print(f"    F1:        {ref_summary['f1'] * 100:.2f}%")
@@ -673,6 +732,10 @@ def main() -> int:
             print(f"    Precisión: {ref_summary['precision'] * 100:.2f}%")
             print(f"    Recall:    {ref_summary['recall'] * 100:.2f}%")
             print(f"    Series evaluadas: {ref_summary['n_series_evaluated']}")
+            print(
+                f"    Muestras evaluables: {ref_summary['n_samples_evaluated']}"
+                f"/{ref_summary['n_samples_total']}"
+            )
         else:
             print("  Contra el target de referencia: no disponible")
     else:

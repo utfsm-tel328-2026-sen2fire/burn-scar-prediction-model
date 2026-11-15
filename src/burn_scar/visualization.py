@@ -361,7 +361,7 @@ def evaluate_validation_samples(
                 sample_id = f"sample_{running_idx}"
             series_id = str(meta["series_id"][i]) if "series_id" in meta else "unknown"
             fold_val = int(meta["fold"][i]) if "fold" in meta else -1
-            burned_px = int(((t_np >= 0.5) & (m_np == 1)).sum())
+            burned_px = int(((t_np >= threshold) & (m_np == 1)).sum())
 
             results.append(
                 EvaluatedSample(
@@ -387,6 +387,37 @@ def evaluate_validation_samples(
     return results
 
 
+def split_informative_samples(
+    samples: Sequence[EvaluatedSample],
+) -> tuple[list[EvaluatedSample], int]:
+    """
+    Separa las muestras con métrica informativa de las que no lo son.
+
+    Una muestra es no informativa cuando su F1 es NaN, es decir cuando la verdad
+    no contiene quemado por encima del umbral de evaluación (o no hay píxeles
+    válidos). Devuelve las muestras informativas y cuántas se han descartado.
+    """
+    informative = [s for s in samples if not np.isnan(s.f1)]
+    return informative, len(samples) - len(informative)
+
+
+def informative_metric_mean(
+    samples: Sequence[EvaluatedSample],
+    field: str = "f1",
+) -> float:
+    """
+    Promedio de una métrica sobre las muestras informativas (ignora las NaN).
+
+    Devuelve NaN si no queda ninguna muestra informativa, para que el informe
+    distinga "no evaluable" de un valor numérico.
+    """
+    informative, _ = split_informative_samples(samples)
+    if not informative:
+        return float("nan")
+    values = np.array([getattr(s, field) for s in informative], dtype=float)
+    return float(values.mean())
+
+
 def select_samples(
     samples: Sequence[EvaluatedSample],
     *,
@@ -404,6 +435,9 @@ def select_samples(
       - `series`:  hasta `n_samples` muestras cuyo `series_id` coincida con `series_id`.
       - `indices`: las muestras cuyos `dataset_idx` estén en `indices`.
       - `random`:  muestreo aleatorio reproducible de hasta `n_samples` muestras.
+
+    Las muestras con métrica no informativa (F1 = NaN) quedan fuera del ranking
+    `best`/`worst`: sin quemado en la verdad su F1 no significa nada.
 
     Retorna una lista de pares `(group_label, EvaluatedSample)`.
     """
@@ -446,9 +480,10 @@ def select_samples(
         chosen_pos = rng.choice(len(samples), size=k, replace=False)
         return [("random", samples[int(i)]) for i in chosen_pos]
 
-    # Para best / worst / both priorizamos muestras con actividad positiva (target_burned_px > 0)
-    active = [s for s in samples if s.target_burned_px > 0]
-    pool = active if active else list(samples)
+    # Para best / worst / both se excluyen las muestras no informativas (F1 = NaN):
+    # su métrica no significa nada y no deben ocupar puesto en el ranking.
+    informative, _ = split_informative_samples(samples)
+    pool = informative if informative else list(samples)
     k = min(max(1, n_samples), len(pool))
 
     best_sorted = sorted(pool, key=lambda s: (s.f1, s.iou, s.target_burned_px), reverse=True)
