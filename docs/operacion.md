@@ -265,3 +265,32 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
   un 100% sin más, suspecta de un dataset vacío antes de congratularte.
 - La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
+
+### Preentrenamiento con MCD64A1 (Etapa M-A → Ajuste M-B)
+
+Para incorporar datos de preentrenamiento de `MODIS/061/MCD64A1` (sin solapamiento con los
+96 eventos CEMS) e inicializar el ajuste en los 5 folds de CEMS:
+
+```bash
+# 1. Diagnóstico R19: verificar desfase mediano (BurnDate - observed_time) sobre CEMS
+uv run python scripts/audit_mcd64a1_lag.py --limit 12
+
+# 2. Minería de eventos MCD64A1 mediterráneos (2018-2026, DBSCAN 150 km/30 d, excluyendo CEMS)
+uv run python scripts/build_mcd64a1_manifest.py --max-events 500
+
+# 3. Descarga incremental y reanudable de parches 64x64 (MCD64A1 + OLCI con nubes reales + DEM/WC)
+uv run python scripts/download_gee_mcd64a1.py --manifest data/mcd_manifest.json
+
+# 4. Ensamblar el dataset PyTorch de preentrenamiento (TMB-S3 congelado + máscara QA)
+uv run --extra rocm python scripts/build_mcd64a1_dataset.py
+
+# 5. Etapa 1 (M-A): preentrenar con MCD64A1 y evaluar transferencia cero-disparo sobre CEMS
+uv run --extra rocm python scripts/pretrain_mcd64a1.py \
+      --epochs 10 --output-checkpoint checkpoints/mcd_pretrained.pt
+
+# 6. Etapa 2 (M-B): ajustar los 5 folds de CEMS inicializando desde el checkpoint M-A
+uv run --extra rocm python scripts/train_propagation.py \
+      --epochs 15 --init-checkpoint checkpoints/mcd_pretrained.pt \
+      --tag prop_m_b_finetuned
+```
+

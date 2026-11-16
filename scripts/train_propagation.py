@@ -204,6 +204,11 @@ def train_fold(
         hidden_ch=args.hidden_ch,
         scar_corruption_prob=args.scar_corruption,
     ).to(device)
+    if getattr(args, "init_checkpoint", None):
+        init_ckpt = torch.load(args.init_checkpoint, map_location=device, weights_only=False)
+        state_dict = init_ckpt.get("model_state_dict", init_ckpt)
+        model.load_state_dict(state_dict, strict=True)
+        print(f"  [Fold {fold}] Inicializado desde checkpoint M-A: {args.init_checkpoint}")
     model_config = {
         "olci_channels": 5,
         "hidden_ch": args.hidden_ch,
@@ -271,6 +276,7 @@ def train_fold(
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
                     "model_config": model_config,
+                    "init_checkpoint": getattr(args, "init_checkpoint", None),
                     "metrics": best_metrics,
                 },
                 filename=f"best_fold_{fold}.pt",
@@ -313,6 +319,11 @@ def main() -> int:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--hidden-ch", type=int, default=32)
     parser.add_argument("--scar-corruption", type=float, default=0.15)
+    parser.add_argument(
+        "--init-checkpoint",
+        default=None,
+        help="Ruta opcional al checkpoint preentrenado M-A (mcd_pretrained.pt) para iniciar el ajuste M-B.",
+    )
     parser.add_argument("--tag", default="propagation_convlstm_segformer")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
