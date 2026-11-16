@@ -3,7 +3,12 @@ import json
 import pytest
 import torch
 from pathlib import Path
-from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders, resolve_loader_options
+from burn_scar.dataset import (
+    BurnScarDataset,
+    compute_generator_version,
+    get_cv_dataloaders,
+    resolve_loader_options,
+)
 
 INDEX_PATH = Path("data/processed/dataset_index.json")
 
@@ -139,6 +144,7 @@ def _write_sample(tmp_path, *, mask, mask_cems=None):
     np.savez_compressed(sample_file, **payload)
     index_file = tmp_path / "index.json"
     index_file.write_text(json.dumps({
+        "generator_version": compute_generator_version(),
         "samples": [{
             "sample_id": "muestra",
             "series_id": "serie",
@@ -167,6 +173,7 @@ def test_dataset_tolera_muestras_sin_target_de_referencia(tmp_path):
     )
     index_file = tmp_path / "index.json"
     index_file.write_text(json.dumps({
+        "generator_version": compute_generator_version(),
         "samples": [{
             "sample_id": "muestra",
             "series_id": "serie",

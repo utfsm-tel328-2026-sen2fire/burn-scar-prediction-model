@@ -15,7 +15,7 @@
 |---|---|---|
 | `README.md` (raíz) | Qué es el proyecto, estado, decisiones clave, próximos pasos | punto de entrada |
 | [`decisiones.md`](decisiones.md) | Decisiones cerradas (B), pendientes (P, BL), alternativas descartadas, riesgos (R), preguntas abiertas | **cambia** |
-| [`dataset.md`](dataset.md) | Glosario, qué es una muestra, el target, el censo, las reglas (D1-D18), baselines y protocolo de evaluación | **cerrado** |
+| [`dataset.md`](dataset.md) | Glosario, qué es una muestra, el target, el censo, las reglas (D1-D20), baselines y protocolo de evaluación | **cerrado** |
 | [`operacion.md`](operacion.md) | Qué necesita el modelo en inferencia: entradas, latencias, ciclo, TMB-S3 como generador de cicatriz | **cerrado** |
 | [`investigacion.md`](investigacion.md) | Estado del arte, por qué 300 m, cómo verificar los números | referencia |
 | [`datos.md`](datos.md) | Catálogo de fuentes: dónde está cada dato, IDs, endpoints, licencias | referencia |
@@ -39,7 +39,7 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Máscara de evaluación | `dataset.md` §10 (y D3) |
 | Rejilla de horizontes de preentrenamiento | `dataset.md` §2 (y D10) |
 | Tamaño de ventana, stride y densidades por buffer | `dataset.md` §6 (y D17) |
-| Reglas de construcción D1-D18 | `dataset.md` §7 |
+| Reglas de construcción D1-D20 | `dataset.md` §7 |
 | Decisiones cerradas B1-B13 | `decisiones.md` §1.1 |
 | Pendientes de evaluación P1-P7 | `decisiones.md` §1.2 |
 | Decisiones que bloquean la descarga BL1-BL7 | `decisiones.md` §1.3 |
@@ -58,7 +58,7 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 
 1. **No duplicar.** Antes de escribir un dato en un documento, comprobar en la tabla de
    arriba dónde vive y enlazar en su lugar.
-2. **Conservar los identificadores.** `D1-D18`, `R1-R22`, `B1-B13`, `P1-P7`, `BL1-BL7`,
+2. **Conservar los identificadores.** `D1-D20`, `R1-R22`, `B1-B13`, `P1-P7`, `BL1-BL7`,
    `M-A/M-B` se citan en el código, en las specs de OpenSpec y en el informe: no se
    renumeran.
 3. **Las referencias son cualificadas.** Cuando una referencia cruza de documento, se

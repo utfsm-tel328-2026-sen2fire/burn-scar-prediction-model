@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import torch
 
+from burn_scar.dataset import compute_generator_version
 from burn_scar.visualization import (
     EvaluatedSample,
     build_comparison_panel,
@@ -307,7 +308,10 @@ def test_visualize_predictions_cli_end_to_end(tmp_path: Path) -> None:
         )
 
     index_file = tmp_path / "dataset_index.json"
-    index_file.write_text(json.dumps({"samples": index_entries}), encoding="utf-8")
+    index_file.write_text(
+        json.dumps({"generator_version": compute_generator_version(), "samples": index_entries}),
+        encoding="utf-8",
+    )
 
     # 3. Guardar checkpoint sintético para fold 0 con hidden_ch=16
     model = BurnScarPropagationModel(olci_channels=5, hidden_ch=16, scar_corruption_prob=0.0)

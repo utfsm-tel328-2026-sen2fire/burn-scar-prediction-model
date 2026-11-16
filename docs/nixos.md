@@ -156,6 +156,18 @@ rm -rf .devenv/state/venv
 devenv tasks run burnscar:sync
 ```
 
+Ojo con `languages.python.libraries`: la lista se propaga al `LD_LIBRARY_PATH` del
+intérprete, y el intérprete **reescribe** esa variable al arrancar (no la antepone), así que
+cualquier ruta que añadas por `env.LD_LIBRARY_PATH` en `devenv.nix` se pierde. Lo que
+funciona es añadir el paquete a `libraries`.
+
+Ahí está `expat` (2026-11-15): el wheel de `rasterio` es *manylinux* y necesita
+`libexpat.so.1`, que en NixOS no existe en el sistema. **La versión tiene que ser la misma
+que la del intérprete**: si `LD_LIBRARY_PATH` apunta a un `expat` distinto del que usa
+`pyexpat`, el módulo `expat` de Python deja de cargar y `import xml.etree.ElementTree`
+falla con `No module named expat`. Por eso va en `libraries` (que usa `pkgs.expat`, la misma
+versión con la que se compiló el intérprete) y no a mano.
+
 ---
 
 ## 6. Qué NO hace esta capa
@@ -176,6 +188,7 @@ devenv tasks run burnscar:sync
 |---|---|
 | `/opt/amdgpu/share/libdrm/amdgpu.ids: No such file or directory` | el `libdrm_amdgpu` del wheel busca una tabla de IDs de GPU en una ruta de ROCm que no existe en NixOS. Es inofensivo: la GPU se enumera igual. |
 | `GPU arch does not support max_autotune_gemm mode usage` | aviso de Inductor sobre `max_autotune_gemm` en esta arquitectura. No afecta a la corrección. |
+| `ImportError: libexpat.so.1: cannot open shared object file` | el venv quedó apuntando a un intérprete anterior al que añadió `expat` a `languages.python.libraries`. Se arregla recreando el venv (§5, «la trampa»). |
 
 ---
 

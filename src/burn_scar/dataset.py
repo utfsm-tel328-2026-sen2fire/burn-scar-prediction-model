@@ -6,8 +6,11 @@ para particionado por Folds de Validación Cruzada (0..4 y -1).
 """
 from __future__ import annotations
 
+import datetime as dt
+import hashlib
 import json
 import os
+import warnings
 from pathlib import Path
 from typing import Sequence
 import numpy as np
@@ -15,6 +18,29 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 DEFAULT_INDEX_PATH = Path("data/processed/dataset_index.json")
+
+# Raíz del proyecto (este módulo vive en <raíz>/src/burn_scar/dataset.py).
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Ficheros cuyo contenido determina el dataset generado. Su huella conjunta
+# identifica la versión del generador: si cambia alguno, el dataset almacenado
+# queda obsoleto y hay que regenerarlo.
+GENERATOR_SOURCES = (
+    PROJECT_ROOT / "scripts" / "build_pytorch_dataset.py",
+    PROJECT_ROOT / "src" / "burn_scar" / "dataset.py",
+)
+
+# Formato de la clave temporal de un frame OLCI ('20260912T091600').
+FRAME_KEY_FORMAT = "%Y%m%dT%H%M%S"
+
+# Tolerancia para emparejar el frame f con su fichero de imagen. La marca de
+# tiempo del frame en el manifiesto de origen (CDSE) y la del fichero descargado
+# (GEE) pueden diferir en sub-segundo porque uno trunca y el otro redondea; sin
+# tolerancia, la adquisición de f quedaba fuera de su propia ventana.
+FRAME_MATCH_TOLERANCE = dt.timedelta(minutes=2)
+
+# Longitud de la ventana temporal: 1 frame pre-incendio + 6 post-incendio.
+TEMPORAL_WINDOW_LEN = 7
 
 # Codificación canónica de las máscaras de validez del paquete de muestra:
 # 1 = píxel evaluable, 255 = píxel ignorado (no observado en la ronda).
@@ -30,10 +56,73 @@ def _canonical_mask(mask: np.ndarray) -> np.ndarray:
     `1` = píxel evaluable, `255` = píxel ignorado.
 
     Tolera los paquetes antiguos, en los que la validez común entre rondas se
-    emitía con `0` para los píxeles no evaluables.
+    emitía con `0` para los píxeles no evaluables. Esta normalización es
+    compatibilidad con esos paquetes, no una garantía: el requisito de que el
+    paquete almacenado use solo `1` y `255` se verifica sobre el fichero, en
+    `scripts/build_pytorch_dataset.py` y en los tests.
     """
     m = np.asarray(mask).astype(np.uint8)
     return np.where(m == MASK_EVALUABLE, MASK_EVALUABLE, MASK_IGNORED).astype(np.uint8)
+
+
+def compute_generator_version(sources: Sequence[Path] | None = None) -> str:
+    """
+    Huella corta (sha256 truncado) del contenido de los ficheros que
+    determinan el dataset generado.
+
+    Se usa en lugar de un número de versión mantenido a mano (que se olvida
+    subir) y del hash de un commit (que no captura un árbol de trabajo sucio).
+    """
+    digest = hashlib.sha256()
+    for source in (sources if sources is not None else GENERATOR_SOURCES):
+        digest.update(Path(source).name.encode("utf-8"))
+        path = Path(source)
+        digest.update(path.read_bytes() if path.exists() else b"")
+    return digest.hexdigest()[:12]
+
+
+def generator_source_names(sources: Sequence[Path] | None = None) -> list[str]:
+    """Rutas (relativas a la raíz del proyecto) de los ficheros del generador."""
+    resolved = sources if sources is not None else GENERATOR_SOURCES
+    out: list[str] = []
+    for source in resolved:
+        path = Path(source)
+        try:
+            out.append(str(path.resolve().relative_to(PROJECT_ROOT)))
+        except ValueError:
+            out.append(str(path))
+    return out
+
+
+def _warn_if_dataset_is_stale(index_data: dict) -> None:
+    """
+    Avisa si el dataset cargado fue producido por un generador distinto del
+    vigente.
+
+    Es el punto de uso real del dataset (entrenar o evaluar), así que es donde
+    la diferencia importa. Un dataset sin versión registrada se avisa aparte:
+    es anterior a esta instrumentación, no necesariamente incompatible.
+    """
+    stored = index_data.get("generator_version")
+    if stored is None:
+        warnings.warn(
+            "El dataset no registra la versión del generador; puede haber sido "
+            "producido por una versión anterior del ensamblador. Regenera el "
+            "dataset para estar seguro de que sus muestras cumplen el spec.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return
+
+    current = compute_generator_version()
+    if stored != current:
+        warnings.warn(
+            f"El dataset fue generado con la versión {stored} del generador y el "
+            f"código actual produce la {current}. Regenera el dataset antes de "
+            f"entrenar o evaluar con él.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
 
 
 def resolve_loader_options(
@@ -55,6 +144,106 @@ def resolve_loader_options(
     if pin_memory is None:
         pin_memory = False if is_rocm else torch.cuda.is_available()
     return int(num_workers), bool(pin_memory)
+
+
+def frame_key_to_datetime(key: str) -> dt.datetime:
+    """Convierte una clave de frame OLCI ('20260912T091600') en su instante."""
+    return dt.datetime.strptime(key, FRAME_KEY_FORMAT)
+
+
+def match_frame_key(
+    keys: Sequence[str],
+    instant: dt.datetime,
+    tolerance: dt.timedelta = FRAME_MATCH_TOLERANCE,
+) -> str | None:
+    """
+    Devuelve la clave de frame más cercana en el tiempo a `instant`, siempre que
+    la diferencia no supere `tolerance`; en caso contrario, `None`.
+
+    El emparejamiento es por cercanía temporal y no por comparación de cadenas
+    porque la marca de tiempo del manifiesto de origen y la del fichero
+    descargado pueden diferir en sub-segundo. Entre dos adquisiciones
+    candidatas gana la más cercana, de modo que el emparejamiento es unívoco.
+
+    Devolver `None` significa que no hay adquisición utilizable de ese frame.
+    """
+    best_key: str | None = None
+    best_delta = float("inf")
+    for key in keys:
+        delta = abs((frame_key_to_datetime(key) - instant).total_seconds())
+        if delta < best_delta:
+            best_key, best_delta = key, delta
+    if best_key is None or best_delta > tolerance.total_seconds():
+        return None
+    return best_key
+
+
+def build_temporal_window(
+    usable_keys: Sequence[str],
+    frame_key: str,
+    pre_fire_cut_key: str,
+    window_len: int = TEMPORAL_WINDOW_LEN,
+) -> list[str]:
+    """
+    Compone la ventana temporal de una muestra.
+
+    - Con adquisiciones post-incendio utilizables: la adquisición pre-incendio
+      más reciente en primera posición y hasta `window_len - 1` post-incendios
+      que terminan en `frame_key`.
+    - Sin post-incendio utilizable: las últimas `window_len` adquisiciones
+      utilizables hasta `frame_key`.
+    - Si no llegan, se rellena repitiendo el frame más antiguo.
+
+    En todos los casos la ventana termina en `frame_key` y está ordenada
+    cronológicamente.
+    """
+    past = sorted(
+        (k for k in usable_keys if k <= frame_key),
+        key=frame_key_to_datetime,
+    )
+    if not past:
+        return []
+
+    post = [k for k in past if k >= pre_fire_cut_key]
+    if post:
+        pre_candidates = [k for k in past if k < pre_fire_cut_key]
+        if pre_candidates:
+            selected = [pre_candidates[-1]] + post[-(window_len - 1):]
+        else:
+            selected = past[-window_len:]
+    else:
+        selected = past[-window_len:]
+
+    while len(selected) < window_len:
+        selected.insert(0, selected[0])
+    return selected
+
+
+def is_chronological(keys: Sequence[str]) -> bool:
+    """Indica si una secuencia de claves de frame está ordenada en el tiempo."""
+    instants = [frame_key_to_datetime(k) for k in keys]
+    return all(a <= b for a, b in zip(instants, instants[1:]))
+
+
+def resolve_sample_window(
+    usable_keys: Sequence[str],
+    frame_iso: str,
+    pre_fire_cut_key: str,
+    window_len: int = TEMPORAL_WINDOW_LEN,
+) -> tuple[str | None, list[str]]:
+    """
+    Resuelve la ventana temporal de una muestra a partir de su frame `f`.
+
+    Devuelve `(f_key, ventana)`. Si no hay ninguna adquisición utilizable que
+    corresponda a `f`, devuelve `(None, [])` y la muestra debe descartarse: no
+    se sustituye por una adquisición anterior, porque eso anclaría la cicatriz
+    y el target a un instante distinto del que define el horizonte.
+    """
+    instant = dt.datetime.fromisoformat(frame_iso.replace("Z", ""))
+    f_key = match_frame_key(usable_keys, instant)
+    if f_key is None:
+        return None, []
+    return f_key, build_temporal_window(usable_keys, f_key, pre_fire_cut_key, window_len)
 
 
 class BurnScarDataset(Dataset):
@@ -91,6 +280,8 @@ class BurnScarDataset(Dataset):
 
         with open(index_path, "r", encoding="utf-8") as f:
             index_data = json.load(f)
+
+        _warn_if_dataset_is_stale(index_data)
 
         all_samples = index_data.get("samples", [])
         if folds is not None:

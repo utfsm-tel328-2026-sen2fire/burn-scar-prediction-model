@@ -20,7 +20,7 @@ El flujo implementado transforma datos satelitales en bruto (imágenes ópticas 
                                                                  │
                                                                  ▼
                                                   BurnScarDataset (PyTorch)
-                                                  (390 muestras en 5 Folds)
+                                                  (344 muestras en 5 Folds)
 ```
 
 ---
@@ -52,7 +52,7 @@ Ejecutada con [`scripts/audit_tmb_splits.py`](../scripts/audit_tmb_splits.py):
 ### 3.2 Censo Real de Muestras (P7 Resuelto)
 Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) se cruzaron los intervalos de observación entre rondas CEMS con las pasadas efectivas de Sentinel-3 OLCI:
 - Se identificaron **414 muestras $(f, h)$** potenciales sobre 44 series.
-- Tras la validación de secuencias temporales completas de 7 frames, se ensamblaron **390 muestras finales**.
+- Con el inventario local de adquisiciones se ensamblan **344 muestras finales** (el dataset se regeneró el 2026-11-15 al anclar la ventana temporal en `f`; ver [`operacion.md`](operacion.md) §9).
 - Distribución de horizontes objetivos: **mediana $h = 0.92$ días (~22 h)**, $p_{25}=0.03\text{ d}$, $p_{75}=1.18\text{ d}$.
 
 ### 3.3 Auditoría de Cambio de Sensor (R14 Medido)
@@ -108,15 +108,15 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
      CEMS conocida en el instante $f$ ($r_f$) y la ronda objetivo:
      $$\text{Target}_{\text{ref}}(f) = \text{clip}\left(\text{CEMS}(r+1) - \text{CEMS}(r_f),\, 0,\, 1\right)$$
      con la validez común a las dos rondas. El dataset guarda **las dos etiquetas**
-     (`target` y `target_cems`); la de ensamblaje tiene 7,7× más superficie que la de
-     referencia y una IoU de solo 0,112 con ella (ver [`operacion.md`](operacion.md) §9).
+     (`target` y `target_cems`); la de ensamblaje tiene 11,1× más superficie que la de
+     referencia y una IoU de solo 0,083 con ella (ver [`operacion.md`](operacion.md) §9).
   7. Asigna cada muestra a su Fold geográfico correspondiente.
 * **Modos de ensamblaje:** `--target-mode scar` (por defecto, el target de producción) y
   `--target-mode cems` (diagnóstico: el target de propagación pasa a ser el crecimiento
   real; **las entradas del modelo son idénticas en ambos modos**, solo cambia la etiqueta).
   El modo se registra en `dataset_index.json`.
-* **Resultado:** 390 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` para auditar la ventana temporal).
-* **Verificación:** 358/390 muestras (91,8%) tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8).
+* **Resultado:** 344 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` y `frame_key` para auditar la ventana temporal). El dataset se regeneró el 2026-11-15 al anclar la ventana en `f`; las 46 muestras descartadas y su motivo están desglosados en [`operacion.md`](operacion.md) §9.
+* **Verificación:** 308/344 muestras (89,5%) tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. Los invariantes de la ventana (terminar en `f` y estar ordenadas en el tiempo) se comprueban en `tests/test_dataset_invariants.py`, y la codificación canónica de las máscaras sobre el fichero almacenado, en `tests/test_generator_version.py`. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8). El índice registra además la versión del generador, y el cargador avisa si el dataset almacenado no corresponde al código vigente.
 
 ---
 

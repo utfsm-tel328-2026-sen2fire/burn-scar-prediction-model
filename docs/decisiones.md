@@ -97,8 +97,21 @@ no se repite.
 | Sensor por ronda, evaluación estratificada | Filtrar las transiciones con sensor distinto | Filtrar encoge un dataset que ya es pequeño; estratificar no pierde nada y el contraste es un resultado propio | D4, R14 |
 | Métrica principal por evento, con agregadas como segundo resultado | Solo promedio por píxel | Con 46 series evaluadas, el promedio por píxel da demasiado peso a los AOIs grandes | dataset.md §10 |
 
-## 2. Riesgos y trampas
+### 1.5 Decisiones sobre el ensamblaje del dataset (auditoría de specs de 2026-11-15)
 
+Decisiones tomadas al alinear el ensamblador con el spec de `propagation-dataset`. Las cinco
+son correcciones de cumplimiento, no cambios de método: el spec ya las fijaba.
+
+| # | Decisión | Por qué | Alternativa descartada |
+|---|---|---|---|
+| **A1** | La consulta de imágenes usa la **extensión del AOI** (el `bbox_wkt` del manifiesto), no el punto del centroide | El downloader filtraba por un punto y el catálogo de referencia por el polígono. OLCI va en tiles fijos y S3A y S3B tienen geometría de órbita distinta: el centroide cae en un hueco de tile de S3B y sus escenas nunca se descargaban. De 128 adquisiciones ausentes, **125 eran de S3B** | Subir solo el límite de resultados de la consulta: el tope de 60 imágenes explica **una** de las 128; el hueco de S3B aparece igual en series que nunca lo alcanzan |
+| **A2** | El frame `f` se empareja con su adquisición por **cercanía temporal** (tolerancia de 2 minutos), no por comparación de cadenas | El manifiesto trunca el tiempo a segundos y el fichero se nombra con el tiempo redondeado: un desfase de 1 s dejaba la adquisición de `f` fuera de su propia ventana en **251 de 390 muestras** | Alinear el nombre del fichero con el manifiesto: ata el ensamblador al descargador. Emparejar por `scene_id`: CDSE y GEE no comparten identificadores de producto |
+| **A3** | La ventana temporal **termina en `f`** y se descarta la muestra si no hay adquisición utilizable de `f` | El código usaba la última adquisición anterior a `f` y la ponía en el sitio de `f`: la cicatriz y la etiqueta quedaban ancladas a un instante distinto del que define el horizonte | Marcar la muestra (`frame_matched: false`) y propagar el filtro: deja un subconjunto no conforme dentro del dataset de producción |
+| **A4** | El descarte de frames sin dato se mide sobre **píxeles sin ninguna banda válida**, no sobre celdas de banda | El spec lo dice de forma explícita y la medida por celda ataba el criterio al número de bandas (5) y trataba igual un píxel con 4 bandas válidas que uno completamente muerto. Afecta a **1 adquisición** del inventario actual | Cambiar el spec a medida por celda: se perdería la semántica de D3 ("nadie miró aquí" es del píxel, no de cada banda) |
+| **A6** | Earth Engine se accede con **cuenta de servicio** y el proyecto se registra para EE | La máquina no tiene navegador, así que el flujo OAuth no funciona. La cuenta de servicio necesita **dos roles**: `roles/earthengine.resourceAdmin` y `roles/serviceusage.serviceUsageConsumer`; con solo el primero, `ee.Initialize()` va bien pero la consulta de la colección falla. El proyecto además tiene que estar registrado (paso de navegador) | Credenciales personales (`earthengine authenticate`): no funciona sin navegador. Solo `roles/earthengine.user`: no incluye `serviceusage.services.use` |
+| **A5** | El dataset registra la **versión del generador** (huella del contenido de sus ficheros) y el cargador avisa si no coincide | Sin esto, un dataset producido por un ensamblador anterior era indistinguible del actual: el caso real que motivó la auditoría (el dataset por defecto almacenaba `mask_cems` con `0` en vez de `255`) pasó inadvertido porque el loader normalizaba al leer | Número de versión mantenido a mano: se olvida subir. Hash de commit: no captura un árbol de trabajo sucio, que es el estado normal mientras se desarrolla |
+
+## 2. Riesgos y trampas
 | # | Riesgo | Impacto | Mitigación |
 |---|---|---|---|
 | **R1** | **CEMS pre-2023 no está en la API.** El endpoint de detalle corta duro en EMSR656 (marzo 2023) y devuelve 403 para todo lo anterior. | Alto: sin eso, el dataset se queda en 96 series | La **página web** de cada activación es pública y no tiene ese corte, y los vectores están en un bucket S3 con URL predecible. Parser propio, ~1 día de trabajo |
@@ -208,7 +221,7 @@ de entrenar y evaluar.
 
 ## 5. Preguntas abiertas
 
-Las primeras son de alcance general; las que siguen nacen de las reglas D1-D18 y de la
+Las primeras son de alcance general; las que siguen nacen de las reglas D1-D20 y de la
 arquitectura de tres fuentes.
 
 - ¿El modelo generaliza a otros regímenes? (boreal, templado, australiano…)

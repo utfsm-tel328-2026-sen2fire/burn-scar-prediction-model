@@ -195,6 +195,73 @@ un experimento barato y no toca el resto de la cadena de procesamiento.
 El detalle de cuentas por fuente está en [`datos.md`](datos.md) §6.1. CEMS, como cualquier
 otra fuente de etiquetas, **nunca está en el camino de inferencia** (datos.md §6.4).
 
+### 6.1 Autenticarse en Earth Engine (para `scripts/download_gee_olci.py`)
+
+El script necesita un proyecto de Google Cloud con la API de Earth Engine activada y
+registrado para uso comercial o no comercial. Hay dos formas de autenticarse:
+
+**A) Credenciales personales (lo habitual).** Desde una máquina con navegador:
+
+```bash
+earthengine authenticate
+earthengine set_project MI_PROYECTO
+```
+
+Quedan guardadas en `~/.config/earthengine/credentials` y el script las usa tal cual.
+
+**B) Cuenta de servicio (para máquinas sin navegador: servidores, contenedores, WSL).**
+Es la opción que usa quien no tiene GUI. La cuenta de servicio necesita **dos roles** en el
+proyecto, y su clave JSON **fuera del repositorio**:
+
+| Rol en la consola | ID | Para qué |
+|---|---|---|
+| **Earth Engine Resource Admin** | `roles/earthengine.resourceAdmin` | poder usar Earth Engine: crear computations, leer assets |
+| **Service Usage Consumer** | `roles/serviceusage.serviceUsageConsumer` | poder *usar* la API de EE en el proyecto (`serviceusage.services.use`) |
+
+Los dos hacen falta, y **los dos son de la cuenta de servicio**, no del usuario: es la
+cuenta la que llama a la API.
+
+> Con solo el primer rol, `ee.Initialize()` funciona pero **consultar la colección falla**
+> con `Permission 'earthengine.computations.create' denied` o
+> `Caller does not have required permission to use project ...`. Son errores distintos para
+> el mismo síntoma: el primero es que el proyecto no está registrado, el segundo es que
+> falta el rol de Service Usage Consumer.
+
+Los dos errores suenan a permiso pero significan cosas distintas, y es fácil confundirlos:
+
+| Mensaje | Qué falta |
+|---|---|
+| `Permission 'earthengine.computations.create' denied ... (or it may not exist)` | el **proyecto no está registrado** para Earth Engine → paso de registro web |
+| `Caller does not have required permission to use project ... Grant the caller the roles/serviceusage.serviceUsageConsumer role` | falta el **rol de Service Usage Consumer** |
+
+Y un tercer matiz: tras conceder un rol, la IAM de Google **se propaga de forma gradual**, así
+que durante unos minutos Earth Engine puede seguir dando errores de permiso que luego se
+resuelven solos. `scripts/check_ee_access.py` los distingue y dice qué falta:
+
+```bash
+# .env  (ya está en .gitignore)
+EARTHENGINE_PROJECT=MI_PROYECTO
+EARTHENGINE_SERVICE_ACCOUNT=/home/usuario/.config/earthengine/service-account.json
+```
+
+Las variables del entorno real tienen prioridad sobre el `.env`. Si no hay ninguna de las
+dos, el script se comporta exactamente como antes: `ee.Initialize()` a secas.
+
+### 6.2 Comprobar el acceso antes de descargar
+
+```bash
+python scripts/check_ee_access.py
+```
+
+Comprueba, en este orden: si la API de Earth Engine está habilitada, si `ee.Initialize()`
+funciona y si la consulta real de la colección OLCI responde (que es lo que exige
+`serviceusage.services.use`, el permiso que más falla). Dice qué falta en cada caso y sale
+con código 1 si algo no está listo.
+
+> En NixOS, el wheel de `rasterio` (que usa el script para abrir los GeoTIFF) necesita
+> `libexpat.so.1`, que no existe en el sistema. `devenv.nix` lo resuelve propagando
+> `expat`; ver [`nixos.md`](nixos.md) §5.
+
 ## 7. Qué cambia en el diseño por todo esto
 
 | Cambio | Por qué |
@@ -228,9 +295,9 @@ uv run --extra rocm python scripts/build_pytorch_dataset.py
 # 2. Fijar la referencia de comparación (baselines B0/B1 sobre el dataset nuevo)
 uv run --extra rocm python scripts/evaluate_baselines.py
 
-# 3. Entrenar (≈2 s por época y fold → ~4 min para 15 épocas × 5 folds)
+# 3. Entrenar (≈1 s por época y fold → ~1,5 min para 15 épocas × 5 folds)
 nohup uv run --extra rocm python scripts/train_propagation.py \
-      --epochs 15 --tag prop_v2 > runs/prop_v2.log 2>&1 &
+      --epochs 15 --tag prop_v4 > runs/prop_v4.log 2>&1 &
 ```
 
 **El paso 1 no es opcional.** La cicatriz de entrada (`x_scar`) y el target están
@@ -260,7 +327,7 @@ compensa pagar la carga en paralelo, y conviene medir antes de asumir.
 
 ### Runs largos
 
-El entrenamiento completo son ~4 min: lánzalo con `nohup` (o `tmux`) y vigila el log.
+El entrenamiento completo son ~2 min con el dataset vigente (344 muestras): lánzalo con `nohup` (o `tmux`) y vigila el log.
 Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el proceso.
 
 ### Cómo leer los números
@@ -298,60 +365,95 @@ El dataset guarda **dos etiquetas** por muestra:
 
 No son la misma cosa. La de ensamblaje resta una **fotografía** de TMB-S3, que en el frente
 de fuego se queda corta: el resultado mezcla crecimiento nuevo con quemado que ya existía
-y que el generador no detectó. Medido sobre las 390 muestras:
+y que el generador no detectó. Medido sobre las **344 muestras** del dataset vigente:
 
 | | Etiqueta de ensamblaje | Etiqueta de referencia |
 |---|---|---|
-| Superficie mediana a umbral 0,5 | 77 px | **10 px** (7,7× menos) |
-| IoU entre ambas | **0,112** | — |
+| Superficie mediana a umbral 0,5 | 56 px | **5 px** (11,1× menos) |
+| IoU entre ambas | **0,083** | — |
 
-**Por eso el F1 se multiplica por 2,7**: una etiqueta 7 veces más grande es más fácil de
+**Por eso el F1 se multiplica por 3,7**: una etiqueta 11 veces más grande es más fácil de
 acertar.
+
+### El dataset vigente y por qué tiene 344 muestras
+
+El dataset se regeneró el 2026-11-15 al anclar la ventana temporal en el frame `f` (ver
+`decisiones.md` §1.5, A2 y A3). Antes tenía 390 muestras y ahora tiene **344**: se descartan
+**46**, y el motivo está medido, no supuesto.
+
+| Motivo del descarte | Muestras |
+|---|---|
+| La adquisición de `f` no está en el inventario local | 24 |
+| La adquisición de `f` existe pero no es utilizable (nocturna o con >20 % de píxeles sin dato) | 22 |
+| **Total** | **46** |
+
+Las 22 del segundo caso **antes se usaban con otra imagen**: el ensamblador tomaba la última
+adquisición anterior a `f` y la ponía en su sitio, con lo que la cicatriz y la etiqueta
+quedaban ancladas a un instante distinto del que define el horizonte. Descartarlas es lo que
+exige el spec.
+
+Las 24 primeras sí son recuperables: la consulta de imágenes descarga ahora por la **extensión
+del AOI** y no por el punto del centroide (`decisiones.md` §1.5, A1). Con el inventario
+completo, **412 de las 414 muestras del manifiesto** tienen su adquisición de `f` disponible;
+las 2 que faltan no tienen adquisición de `f` en ninguna de las dos fuentes.
+
+Composición por fold: 30 (f0), 16 (f1), 108 (f2), 95 (f3), 23 (f4) y **72 fuera de dominio**
+(fold -1, el conjunto de test).
 
 ### El resultado del diagnóstico
 
-Conjunto de test (fold -1, fuera de dominio), **umbral operativo congelado en 0,10** para
+Conjunto de test (fold -1, fuera de dominio), **umbral operativo congelado en 0,20** para
 todo lo que se compara (el modelo y los baselines, con la misma agregación por evento y el
 mismo subconjunto de muestras evaluables):
 
 | Modelo | F1 contra la etiqueta de ensamblaje | F1 contra la **referencia** (propagación real) |
 |---|---|---|
 | B0 persistencia | 0,00% | 0,00% |
-| B1 dilatación radial | 15,80% | 6,88% |
-| Trivial "todo quemado" | 16,03% | 7,46% |
-| **Modelo de producción** (`prop_v2`) | **33,80%** | **12,41%** |
-| Modelo entrenado con la referencia | 11,03% | 11,03% |
+| B1 dilatación radial | 14,98% | 5,40% |
+| Trivial "todo quemado" | 14,25% | 5,83% |
+| **Modelo de producción** (`prop_v4`) | **33,73%** | **9,06%** |
+| Modelo entrenado con la referencia (`prop_cems_diag_v4`) | 9,16% | 9,16% |
 
 El número de **muestras evaluables** (las que tienen métrica informativa) depende de la
-etiqueta y del umbral:
+etiqueta:
 
-| Etiqueta | Umbral 0,50 (baselines) | Umbral 0,10 (operativo) |
+| Etiqueta | Umbral 0,50 (baselines) | Umbral 0,20 (operativo) |
 |---|---|---|
-| De ensamblaje | 78/78 | 78/78 |
-| De referencia | 54/78 | 76/78 |
+| De ensamblaje | 71/72 | 71/72 |
+| De referencia | 48/72 | 49/72 |
 
-Contra la etiqueta de referencia, que tiene 7,7× menos superficie, a umbral 0,50 la mayoría
-de las muestras no tienen quemado en la verdad y por tanto **no son medibles**; a umbral
-0,10 (el operativo) casi todas lo son. Por eso los números de la tabla se miden todos al
-umbral operativo: a 0,50 los mismos baselines sacan 12,00% (ensamblaje) y 3,05%
-(referencia), pero sobre 54 de las 78 muestras, es decir sobre otro subconjunto y, por
-tanto, otro número.
+Contra la etiqueta de referencia, que tiene 11× menos superficie, 23 de las 72 muestras del
+test no tienen quemado en la verdad y por tanto **no son medibles**. En este dataset el
+subconjunto evaluable casi no cambia entre el umbral 0,50 y el operativo, pero en el dataset
+anterior sí cambiaba, y por eso los números de la tabla se miden todos al umbral operativo: a
+0,50 los mismos baselines sacan 12,36% (ensamblaje) y 3,25% (referencia), sobre otro
+subconjunto.
 
 Cómo leerlo:
 
-- **El número publicable de propagación es 12,41%**, no 33,80%. Este último mide desempeño
+- **El número publicable de propagación es 9,06%**, no 33,73%. Este último mide desempeño
   contra una etiqueta que incluye quemado no detectado.
 - **El modelo sí aprende, pero menos de lo que parecía**: contra el crecimiento real saca
-  12,41%, **1,66× el trivial de esa misma etiqueta y ese mismo umbral** (7,46%). La vara
-  real contra el crecimiento real es **~7,5%**, no ~3%: contra la verdad, B1 (6,88%) y no
-  hacer nada (7,46%) siguen siendo prácticamente indistinguibles, y el modelo está por
-  encima de los dos, pero no por un orden de magnitud.
-- **Entrenar con la etiqueta limpia no mejora** (11,03% frente a 12,41% contra la misma
-  verdad, mismo umbral y mismo subconjunto). El target de referencia tiene 7× menos
-  superficie y es más ruidoso en términos relativos, así que no es un juego de suma cero: el
-  problema de propagación es genuinamente difícil.
-- **Recall 80% con precisión 8%**: el modelo acierta *dónde* se va a quemar, pero
+  9,06%, **1,55× el trivial de esa misma etiqueta y ese mismo umbral** (5,83%). La vara
+  real contra el crecimiento real es **~5,8%**: contra la verdad, B1 (5,40%) y no hacer nada
+  (5,83%) siguen siendo prácticamente indistinguibles, y el modelo está por encima de los
+  dos, pero no por un orden de magnitud.
+- **Entrenar con la etiqueta limpia no mejora**: 9,16% frente a 9,06% contra la misma verdad,
+  al mismo umbral (0,20) y sobre el mismo subconjunto (49/72 muestras). Empate, dentro del
+  ruido. A su propio umbral operativo (0,10) ese modelo saca 11,27%, pero sobre 70/72
+  muestras, o sea otro subconjunto y otro número, y por tanto no comparable. El target de
+  referencia tiene 11× menos superficie y es más ruidoso en términos relativos, así que no es
+  un juego de suma cero: el problema de propagación es genuinamente difícil.
+- **Recall 81% con precisión 26%**: el modelo acierta *dónde* se va a quemar, pero
   sobreestima la anchura del frente. Es el siguiente frente de trabajo.
+- **El umbral no es estable**: los óptimos por fold van de 0,10 a 0,40 y el entrenamiento
+  avisa. El umbral congelado (mediana, 0,20) es poco fiable; los números de test hay que
+  leerlos con esa reserva.
+
+Las cifras de las versiones anteriores del dataset están **sustituidas** por estas. La
+comparación con ellas no es válida: el dataset anterior tenía la ventana temporal anclada a
+una adquisición distinta de `f`, y sus etiquetas no correspondían a la definición de quemado
+nuevo.
 
 ### Cómo reproducir el diagnóstico
 
@@ -376,7 +478,7 @@ uv run --extra rocm python scripts/build_pytorch_dataset.py --target-mode cems \
       --samples-out data/processed_target_cems/samples \
       --index-out data/processed_target_cems/dataset_index.json
 uv run --extra rocm python scripts/train_propagation.py --epochs 15 \
-      --index data/processed_target_cems/dataset_index.json --tag prop_cems_diag
+      --index data/processed_target_cems/dataset_index.json --tag prop_cems_diag_v4
 ```
 
 ### Ojo con comparar etiquetas distintas

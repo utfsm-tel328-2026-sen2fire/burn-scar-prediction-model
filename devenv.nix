@@ -47,6 +47,8 @@ in
       bzip2 # libbz2.so.1 (idem)
       gcc.lib # libstdc++.so.6, libgomp.so.1
       numactl # libnuma.so.1 (dependencia del runtime de HSA/ROCm)
+      expat # libexpat.so.1 (lo pide el wheel de rasterio; debe ser la MISMA
+      # version que la del interprete, si no pyexpat deja de cargar)
     ];
   };
 

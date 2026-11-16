@@ -43,7 +43,7 @@ qué probabilidad.
 
 El detalle completo, con las alternativas descartadas y el porqué, está en
 [`docs/decisiones.md`](docs/decisiones.md). Estas seis son el resumen de **B1-B13**
-(`decisiones.md` §1.1) y **D1-D18** (`dataset.md` §7).
+(`decisiones.md` §1.1) y **D1-D20** (`dataset.md` §7).
 
 ## Estado
 
@@ -76,7 +76,7 @@ paralelo cerrar la definición formal de **B2 (P2)** para el criterio de evaluac
    entra Sentinel-1, qué series no mediterráneas se quedan y la máscara de nubes. Son
    baratas de decidir y caras de corregir **después** de descargar.
 2. Construir la ingesta: CEMS vía API → cubos GEE → etiquetado cuantificado, aplicando las
-   reglas D1-D18 ([`docs/dataset.md`](docs/dataset.md) §7), en tiles de 64×64 px a 300 m.
+   reglas D1-D20 ([`docs/dataset.md`](docs/dataset.md) §7), en tiles de 64×64 px a 300 m.
 3. Implementar los modelos de referencia B0/B1/B2 con el protocolo de evaluación ya fijado.
 4. **Preentrenar con MCD64A1** (M-A) y luego **ajustar con las 46 series de CEMS** (M-B),
    en 5 folds agrupados. La cicatriz de entrada la produce TMB-S3 en todos los pasos.
