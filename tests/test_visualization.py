@@ -2,17 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
+from burn_scar.dataset import compute_generator_version
 from burn_scar.visualization import (
     EvaluatedSample,
     build_comparison_panel,
+    evaluate_validation_samples,
     export_panel_png,
     infer_hidden_ch_from_state_dict,
+    informative_metric_mean,
     load_propagation_checkpoint,
     render_overlay_rgb,
     select_samples,
+    split_informative_samples,
 )
 
 
@@ -154,6 +159,70 @@ def test_select_samples_modes_and_export_png(tmp_path: Path) -> None:
     assert png_path.stat().st_size > 100
 
 
+def test_ranking_excluye_muestras_no_informativas() -> None:
+    """Las muestras con F1 = NaN (verdad sin quemado) no ocupan puesto en el ranking."""
+    samples = [
+        _make_dummy_sample(0, f1=0.15, iou=0.10),
+        _make_dummy_sample(1, f1=float("nan"), iou=float("nan")),
+        _make_dummy_sample(2, f1=0.85, iou=0.75),
+    ]
+
+    informative, excluded = split_informative_samples(samples)
+    assert len(informative) == 2
+    assert excluded == 1
+
+    best = select_samples(samples, mode="best", n_samples=2)
+    assert [s.dataset_idx for _, s in best] == [2, 0]
+
+    worst = select_samples(samples, mode="worst", n_samples=2)
+    assert [s.dataset_idx for _, s in worst] == [0, 2]
+
+
+def test_promedio_ignora_muestras_no_informativas() -> None:
+    """Una sola muestra vacía no anula el promedio de F1 del fold."""
+    samples = [
+        _make_dummy_sample(0, f1=0.4, iou=0.2),
+        _make_dummy_sample(1, f1=float("nan"), iou=float("nan")),
+    ]
+
+    assert informative_metric_mean(samples, "f1") == pytest.approx(0.4)
+    assert informative_metric_mean(samples, "iou") == pytest.approx(0.2)
+
+
+def test_promedio_sin_muestras_informativas_es_nan() -> None:
+    """Sin ninguna muestra informativa el promedio es NaN, no 0."""
+    samples = [_make_dummy_sample(0, f1=float("nan"), iou=float("nan"))]
+
+    assert np.isnan(informative_metric_mean(samples, "f1"))
+
+
+def test_muestras_con_quemado_se_evaluan_con_el_umbral_de_decision() -> None:
+    """La condición de "muestra con quemado" usa el umbral de evaluación, no 0,5 fijo."""
+    from burn_scar.models.propagation import BurnScarPropagationModel
+
+    H = W = 64
+    target = torch.zeros(1, 1, H, W)
+    target[0, 0, 0, 0] = 0.3  # quemado por debajo de 0,5 pero por encima de 0,1
+
+    batch = {
+        "x_olci": torch.zeros(1, 7, 5, H, W),
+        "x_dem": torch.zeros(1, 1, H, W),
+        "x_worldcover": torch.zeros(1, 1, H, W),
+        "x_scar": torch.zeros(1, 1, H, W),
+        "horizon_days": torch.ones(1, 1),
+        "target": target,
+        "mask": torch.ones(1, 1, H, W, dtype=torch.uint8),
+        "meta": {"sample_id": ["m1"], "series_id": ["serie_a"], "fold": [0]},
+    }
+    model = BurnScarPropagationModel(olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0)
+
+    con_umbral_bajo = evaluate_validation_samples(model, [batch], device="cpu", threshold=0.1)
+    assert con_umbral_bajo[0].target_burned_px == 1
+
+    con_umbral_alto = evaluate_validation_samples(model, [batch], device="cpu", threshold=0.5)
+    assert con_umbral_alto[0].target_burned_px == 0
+
+
 def test_checkpoint_loading_and_validation_errors(tmp_path: Path) -> None:
     from burn_scar.models.propagation import BurnScarPropagationModel
 
@@ -239,7 +308,10 @@ def test_visualize_predictions_cli_end_to_end(tmp_path: Path) -> None:
         )
 
     index_file = tmp_path / "dataset_index.json"
-    index_file.write_text(json.dumps({"samples": index_entries}), encoding="utf-8")
+    index_file.write_text(
+        json.dumps({"generator_version": compute_generator_version(), "samples": index_entries}),
+        encoding="utf-8",
+    )
 
     # 3. Guardar checkpoint sintético para fold 0 con hidden_ch=16
     model = BurnScarPropagationModel(olci_channels=5, hidden_ch=16, scar_corruption_prob=0.0)

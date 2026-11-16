@@ -377,6 +377,10 @@ verificación meteorológica y la opción near-real-time sin clave de CDS.
 
 Derivar pendiente y orientación con `ee.Terrain.slope()` y `ee.Terrain.aspect()`.
 
+Antes de ensamblar una muestra, el DEM debe tener forma `(64, 64)`, valores finitos y
+al menos una observación no nula. Una capa ausente o inválida excluye la serie con
+un motivo explícito; no se rellenan ceros silenciosos.
+
 ### 4.3 ESA WorldCover — combustible
 
 ```
@@ -385,6 +389,12 @@ Derivar pendiente y orientación con `ee.Terrain.slope()` y `ee.Terrain.aspect()
 
 Clase de cobertura del suelo. Define el tipo de combustible (bosque, matorral, hierba,
 agricultura) → controla tanto la inflamabilidad como la velocidad de propagación.
+
+La validación de la capa remuestreada a `(64, 64)` admite únicamente las clases ESA
+WorldCover v200 `{10,20,30,40,50,60,70,80,90,95,100}`. El valor `0` representa ausencia
+de dato, no una clase. Un raster completamente vacío, con valores no finitos o con una
+clase desconocida hace que la serie se excluya y que el motivo quede registrado en el
+inventario del dataset.
 
 ### 4.4 MCD64A1 — fecha de quema (MODIS)
 

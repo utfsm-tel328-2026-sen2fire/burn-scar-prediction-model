@@ -26,7 +26,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import torch
+from burn_scar.dataset import (
+    MASK_EVALUABLE,
+    MASK_IGNORED,
+    compute_generator_version,
+    generator_source_names,
+    is_chronological,
+    resolve_sample_window,
+    validate_unique_sample_index,
+)
 from burn_scar.models import load_tmb_s3, predict_burn_scar
+from burn_scar.quality import (
+    DATASET_INDEX_SCHEMA_VERSION,
+    atomic_save_npz,
+    canonical_json_sha256,
+    file_sha256,
+    horizon_band,
+    scar_coverage,
+    summarize_horizons,
+    summarize_scar_coverage,
+    validate_static_layers,
+)
 
 # Una adquisición con más de este porcentaje de píxeles sin dato se descarta
 # (mismo criterio que la ficha del dataset TMB-S3 upstream).
@@ -39,6 +59,48 @@ WINDOW_LEN = 7
 def _frame_key(iso_timestamp: str) -> str:
     """'2026-09-12T15:47:00' -> '20260912T154700' (mismo formato que las claves de frame)."""
     return iso_timestamp.replace("-", "").replace(":", "")[:15]
+
+
+def _reference_growth(
+    all_burnt: np.ndarray,
+    all_valid: np.ndarray,
+    round_times: list[str | None],
+    frame_dt: dt.datetime,
+    target_idx: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Target de referencia: crecimiento real entre la última ronda CEMS conocida en
+    el instante del frame actual (r_f) y la ronda objetivo.
+
+    Devuelve (target_cems, mask_cems), donde mask_cems es la validez común a
+    las dos rondas. Si la serie no tiene ronda previa, devuelve el crecimiento a
+    cero y una máscara íntegramente no evaluable: la muestra se conserva, pero
+    sin target de referencia.
+
+    La validez común usa la codificación canónica del proyecto: 1 = píxel
+    evaluable, 255 = píxel ignorado (no observado en alguna de las dos rondas).
+    """
+    f_idx: int | None = None
+    for i, iso in enumerate(round_times):
+        if iso is None:
+            continue
+        if dt.datetime.fromisoformat(iso) <= frame_dt:
+            if f_idx is None or iso > round_times[f_idx]:
+                f_idx = i
+    if f_idx is None:
+        return (
+            np.zeros(all_burnt[target_idx].shape, dtype=np.float32),
+            np.full(all_valid[target_idx].shape, MASK_IGNORED, dtype=np.uint8),
+        )
+
+    growth = np.clip(
+        all_burnt[target_idx].astype(np.float32) - all_burnt[f_idx].astype(np.float32),
+        0.0,
+        1.0,
+    )
+    both_valid = (all_valid[target_idx] == 1) & (all_valid[f_idx] == 1)
+    common = np.where(both_valid, MASK_EVALUABLE, MASK_IGNORED).astype(np.uint8)
+    return growth, common
 
 
 def assign_geographic_folds(series_list: list[dict]) -> dict[str, int]:
@@ -75,12 +137,22 @@ def main() -> int:
     parser.add_argument("--cems-manifest", default="data/cems_manifest_46.json")
     parser.add_argument("--samples-out", default="data/processed/samples")
     parser.add_argument("--index-out", default="data/processed/dataset_index.json")
+    parser.add_argument(
+        "--target-mode",
+        choices=("scar", "cems"),
+        default="scar",
+        help=(
+            "Target de propagación: 'scar' = clip(CEMS(dest) - cicatriz TMB-S3(f)) "
+            "(producción); 'cems' = crecimiento real entre rondas CEMS (diagnóstico)"
+        ),
+    )
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("=" * 72)
     print("PASO 5: ENSAMBLAJE DEL DATASET PYTORCH (TMB-S3 + OLCI + CEMS)")
     print(f"Dispositivo activo: {device}")
+    print(f"Modo de target: {args.target_mode}")
     if device == "cuda":
         print(f"GPU: {torch.cuda.get_device_name(0)}")
     print("=" * 72)
@@ -112,7 +184,14 @@ def main() -> int:
     os.makedirs(args.samples_out, exist_ok=True)
 
     sample_index = []
+    excluded_series: list[dict] = []
     total_samples = 0
+    n_descartadas_sin_f = 0
+    n_ventanas_terminan_en_f = 0
+    n_ventanas_ordenadas = 0
+    n_adquisiciones_evaluadas = 0
+    n_adquisiciones_descartadas = 0
+    n_adquisiciones_cambio_criterio = 0
     start_time = time.time()
 
     print("\nProcesando muestras por serie:")
@@ -135,13 +214,51 @@ def main() -> int:
         cems_valido = cems_npz["valido"]    # (T_rondas, 64, 64)
         round_numbers = list(cems_npz["round_numbers"])
 
-        # Cargar estáticas (.npz)
+        # Tiempo de adquisición de cada ronda, alineado con round_numbers
+        round_time_by_num = {
+            int(r["monitoring_number"]): r.get("acquisition_time")
+            for r in cems_s.get("rounds", [])
+            if r.get("monitoring_number") is not None
+        }
+        round_times = [round_time_by_num.get(int(n)) for n in round_numbers]
+
+        # Cargar y validar capas estáticas (.npz)
         static_file = f"data/raw/static/{sid}/static_layers.npz"
         if not os.path.exists(static_file):
+            invalid_backup = Path(f"{static_file}.invalid")
+            if invalid_backup.exists():
+                try:
+                    with np.load(invalid_backup) as invalid:
+                        validate_static_layers(invalid["dem"], invalid["worldcover"])
+                    detail = str(invalid_backup)
+                except Exception as exc:
+                    detail = str(exc)
+                reason = "invalid_static_layers"
+            else:
+                reason = "missing_static_layers"
+                detail = static_file
+            excluded_series.append({
+                "series_id": sid,
+                "stage": "static_layers",
+                "reason": reason,
+                "detail": detail,
+            })
+            print(f"   ! {sid}: capas estáticas no utilizables ({reason}); serie excluida")
             continue
         static_npz = np.load(static_file)
         dem = static_npz["dem"].astype(np.float32)  # (64, 64)
         worldcover = static_npz["worldcover"].astype(np.float32)  # (64, 64)
+        try:
+            validate_static_layers(dem, worldcover)
+        except ValueError as exc:
+            excluded_series.append({
+                "series_id": sid,
+                "stage": "static_layers",
+                "reason": "invalid_static_layers",
+                "detail": str(exc),
+            })
+            print(f"   ! {sid}: capas estáticas inválidas ({exc}); serie excluida")
+            continue
 
         # Cargar los frames OLCI de la serie y descartar los no utilizables:
         # - más de un 20% de píxeles sin dato (borde del swath)
@@ -157,9 +274,18 @@ def main() -> int:
             b5 = raw_bands[[3, 5, 7, 16, 20]] if raw_bands.shape[0] == 22 else raw_bands[:5]
             b5 = b5.astype(np.float32)
             valid = (b5 > 0) & (b5 < 32768)
-            fill_frac = float((~valid).mean())
+            # Un píxel carece de dato cuando NO tiene ninguna banda válida. El
+            # umbral del 20% se mide sobre píxeles, no sobre celdas de banda
+            # (D3): contar celdas hacía que un píxel con cuatro bandas
+            # válidas casi vacías y otro completamente muerto pesaran igual.
+            fill_frac = float((~valid.all(axis=0)).mean())
+            fill_frac_celda = float((~valid).mean())
             has_signal = bool(valid.any()) and float(b5[valid].max()) > 0.0
+            n_adquisiciones_evaluadas += 1
             if fill_frac > MAX_NODATA_FRAC or not has_signal:
+                n_adquisiciones_descartadas += 1
+                if fill_frac_celda <= MAX_NODATA_FRAC:
+                    n_adquisiciones_cambio_criterio += 1
                 continue
             frame_cache[fname] = (b5, valid)
 
@@ -173,7 +299,6 @@ def main() -> int:
             str(r.get("acquisition_time")) for r in rounds_meta if r.get("acquisition_time")
         ]
         pre_fire_cut = min((_frame_key(t) for t in acq_times), default="")
-        pre_fire_keys = [k for k in sorted_frame_keys if k < pre_fire_cut]
 
         series_samples_count = 0
         for smp in samples:
@@ -188,26 +313,39 @@ def main() -> int:
             gt_target_burnt = cems_quemado[r_idx]
             gt_target_valid = cems_valido[r_idx]
 
-            # Frame f actual
+            # Instante real de f (del manifiesto). Es la referencia semántica
+            # para el horizonte y para la ronda CEMS previa; la clave `f_key` es
+            # la adquisición que le corresponde, que puede diferir en
+            # sub-segundo por el redondeo entre catálogos.
             f_dt = dt.datetime.fromisoformat(frame_iso.replace("Z", ""))
-            f_key = f_dt.strftime("%Y%m%dT%H%M%S")
+
+            # Frame f actual: se empareja con su adquisición por cercanía
+            # temporal. La marca del manifiesto (CDSE) y la del fichero
+            # descargado (GEE) pueden diferir en sub-segundo, y comparar
+            # cadenas dejaba la adquisición de f fuera de su propia ventana.
+            f_key, selected_keys = resolve_sample_window(
+                sorted_frame_keys, frame_iso, pre_fire_cut, WINDOW_LEN
+            )
+            if f_key is None:
+                n_descartadas_sin_f += 1
+                print(
+                    f"   ! {sample_id}: sin adquisición utilizable de f "
+                    f"({frame_iso}); muestra descartada"
+                )
+                continue
 
             # Ventana temporal: 1 frame pre-incendio + hasta 6 post-incendio (BL1).
             # El frame pre-incendio es la adquisición utilizable más reciente anterior
             # a la primera ronda CEMS; el resto son post-incendios que terminan en f.
-            past_keys = [k for k in sorted_frame_keys if k <= f_key]
-            if not past_keys:
+            if not selected_keys:
+                n_descartadas_sin_f += 1
                 continue
 
-            post_keys = [k for k in past_keys if k >= pre_fire_cut] or past_keys
-            pre_key = pre_fire_keys[-1] if (pre_fire_keys and pre_fire_keys[-1] <= f_key) else None
-
-            if pre_key:
-                selected_keys = [pre_key] + post_keys[-(WINDOW_LEN - 1):]
-            else:
-                selected_keys = past_keys[-WINDOW_LEN:]
-            while len(selected_keys) < WINDOW_LEN:
-                selected_keys.insert(0, selected_keys[0])
+            # Control de invariantes: la ventana termina en f y está ordenada.
+            if selected_keys[-1] == f_key:
+                n_ventanas_terminan_en_f += 1
+            if is_chronological(selected_keys):
+                n_ventanas_ordenadas += 1
 
             # Cargar los 7 frames (5 bandas cada uno)
             olci_tensor = np.stack([frame_cache[k][0] for k in selected_keys], axis=0)
@@ -242,7 +380,9 @@ def main() -> int:
             with torch.no_grad():
                 scar_probs = predict_burn_scar(tmb_model, tmb_tensor).cpu().numpy()[0]  # (7, 64, 64)
 
-            # La cicatriz de entrada en el frame actual f es el último frame de la secuencia
+            # La cicatriz de entrada es la del frame actual f, que por
+            # construcción es el último frame de la ventana temporal.
+            assert selected_keys[-1] == f_key, "la ventana no termina en f"
             scar_f = scar_probs[-1]  # (64, 64) en [0..1]
 
             # Guardar OLCI sin el centinela de nodata: cada píxel sin dato se
@@ -262,19 +402,49 @@ def main() -> int:
             # Target = clip(poligono(r+1) - scar_TMB3(f), 0, 1)
             target_delta = np.clip(gt_target_burnt.astype(np.float32) - scar_f.astype(np.float32), 0.0, 1.0)
 
-            # Guardar muestra en disco
+            # 4b. Target de referencia: crecimiento real entre la última ronda CEMS
+            # conocida en el instante f y la ronda objetivo, con la validez común.
+            target_cems, mask_cems = _reference_growth(
+                cems_quemado, cems_valido, round_times, f_dt, r_idx
+            )
+
+            if args.target_mode == "cems":
+                target_out = target_cems
+                mask_out = mask_cems
+            else:
+                target_out = target_delta
+                mask_out = np.where(
+                    gt_target_valid == 1, MASK_EVALUABLE, MASK_IGNORED
+                ).astype(np.uint8)
+
+            # Codificación canónica de las máscaras: 1 = evaluable, 255 = ignorado
+            # y ningún otro valor (D3). Se comprueba ANTES de escribir el
+            # paquete, para que no quede en disco una muestra no conforme.
+            for mask_name, mask_arr in (("mask", mask_out), ("mask_cems", mask_cems)):
+                mask_vals = set(np.unique(mask_arr).tolist())
+                if not mask_vals <= {MASK_EVALUABLE, MASK_IGNORED}:
+                    raise ValueError(
+                        f"{sample_id}: la máscara '{mask_name}' contiene los valores "
+                        f"{sorted(mask_vals)}, fuera de la codificación canónica "
+                        f"{{{MASK_EVALUABLE}, {MASK_IGNORED}}}"
+                    )
+
+            # Guardar muestra en disco de forma atómica
             sample_file = os.path.join(args.samples_out, f"{sample_id}.npz")
-            np.savez_compressed(
+            atomic_save_npz(
                 sample_file,
                 x_olci=olci_stored.astype(np.float16),
                 x_dem=dem.astype(np.float32),
                 x_worldcover=worldcover.astype(np.uint8),
                 x_scar=scar_f.astype(np.float16),
                 horizon_days=np.float32(horizon_days),
-                target=target_delta.astype(np.float16),
-                mask=gt_target_valid.astype(np.uint8),
+                target=target_out.astype(np.float16),
+                mask=mask_out.astype(np.uint8),
+                target_cems=target_cems.astype(np.float16),
+                mask_cems=mask_cems.astype(np.uint8),
             )
 
+            coverage = scar_coverage(scar_f)
             fold_id = series_fold_map.get(sid, 0)
             sample_index.append({
                 "sample_id": sample_id,
@@ -282,7 +452,16 @@ def main() -> int:
                 "file": sample_file,
                 "fold": fold_id,
                 "horizon_days": horizon_days,
+                "horizon_band": horizon_band(horizon_days),
+                "scar_state": coverage["state"],
+                "scar_coverage": {
+                    "state": coverage["state"],
+                    "fraction_gt_zero": coverage["fraction_gt_zero"],
+                    "fraction_ge_0_5": coverage["fraction_ge_0_5"],
+                },
                 "frame_keys": selected_keys,
+                "frame_key": f_key,
+                "target_mode": args.target_mode,
                 "sensor_changed": smp.get("sensor_changed", False),
                 "geo_mediterranean": s_meta.get("geo_mediterranean", True),
                 "in_tmb_test": s_meta.get("in_tmb_test", False),
@@ -294,23 +473,95 @@ def main() -> int:
         print(f"[{idx:>2}/{len(series_meta_list)}] {sid:<18} -> {series_samples_count} muestras ensambladas (Fold {series_fold_map.get(sid, 0)})")
 
     # Guardar índice final del dataset
+    validate_unique_sample_index(sample_index)
+    horizon_distribution = summarize_horizons(s["horizon_days"] for s in sample_index)
+    scar_summary = summarize_scar_coverage(
+        (s["scar_coverage"] for s in sample_index),
+        (s["series_id"] for s in sample_index),
+    )
+    folds_distribution = {
+        f"fold_{f}": sum(1 for s in sample_index if s["fold"] == f)
+        for f in range(5)
+    }
+    inventory = {
+        "total_entries": len(sample_index),
+        "total_unique_samples": len({s["sample_id"] for s in sample_index}),
+        "total_unique_files": len({s["file"] for s in sample_index}),
+        "total_series": len({s["series_id"] for s in sample_index}),
+        "folds_distribution": folds_distribution,
+        "out_of_domain_samples": sum(1 for s in sample_index if s["fold"] == -1),
+        "horizon_distribution": horizon_distribution,
+        "scar_coverage": scar_summary,
+        "excluded_series": excluded_series,
+    }
+    # Huella de contenido: estable entre regeneraciones del mismo dataset,
+    # aunque el fichero cambie en su cabecera temporal.
+    dataset_content_sha256 = canonical_json_sha256({
+        "inventory": inventory,
+        "samples": sample_index,
+        "target_mode": args.target_mode,
+    })
     with open(args.index_out, "w", encoding="utf-8") as f:
         json.dump({
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "dataset_index_schema_version": DATASET_INDEX_SCHEMA_VERSION,
+            "dataset_content_sha256": dataset_content_sha256,
+            "target_mode": args.target_mode,
+            "generator_version": compute_generator_version(),
+            "generator_sources": generator_source_names(),
+            "source_manifest_sha256": file_sha256(args.cems_manifest),
+            "catalog_olci": cems_manifest.get("summary", {}).get("olci_catalog", {}),
             "total_samples": len(sample_index),
-            "folds_distribution": {
-                f"fold_{f}": sum(1 for s in sample_index if s["fold"] == f)
-                for f in range(5)
-            },
+            "folds_distribution": folds_distribution,
             "out_of_domain_samples": sum(1 for s in sample_index if s["fold"] == -1),
+            "inventory": inventory,
             "samples": sample_index,
         }, f, indent=2, ensure_ascii=False)
+
+    # Eliminar los paquetes de muestras que ya no están en el índice (por
+    # haber sido descartadas): si se quedaran, el entrenamiento podría usar
+    # muestras antiguas que no cumplen el spec.
+    written = {os.path.basename(s["file"]) for s in sample_index}
+    n_huerfanos = 0
+    if os.path.isdir(args.samples_out):
+        for fname in os.listdir(args.samples_out):
+            if fname.endswith(".npz") and fname not in written:
+                os.remove(os.path.join(args.samples_out, fname))
+                n_huerfanos += 1
+    if n_huerfanos:
+        print(f"  Paquetes huérfanos eliminados: {n_huerfanos}")
+
+    remaining = {
+        os.path.basename(path)
+        for path in glob.glob(os.path.join(args.samples_out, "*.npz"))
+    }
+    if remaining != written:
+        raise RuntimeError(
+            "Los paquetes en disco no reconcilian con el índice: "
+            f"faltan={sorted(written - remaining)[:5]}, "
+            f"sobran={sorted(remaining - written)[:5]}"
+        )
 
     elapsed = time.time() - start_time
     print("\n" + "=" * 72)
     print("RESUMEN DE ENSAMBLAJE (PASO 5)")
     print("=" * 72)
+    print(f"Modo de target:               {args.target_mode}")
     print(f"Total de muestras ensambladas:  {total_samples}")
+    print("-" * 72)
+    print("CONTROLES DE LA VENTANA TEMPORAL")
+    print(f"  Ventanas que terminan en f:      {n_ventanas_terminan_en_f}/{total_samples}")
+    print(f"  Ventanas ordenadas en el tiempo: {n_ventanas_ordenadas}/{total_samples}")
+    print(f"  Muestras descartadas sin f:      {n_descartadas_sin_f}")
+    print("-" * 72)
+    print("FILTRADO DE ADQUISICIONES SIN DATO")
+    print(f"  Adquisiciones evaluadas:         {n_adquisiciones_evaluadas}")
+    print(f"  Adquisiciones descartadas:       {n_adquisiciones_descartadas}")
+    print(
+        f"  Descartadas por el criterio de píxeles: {n_adquisiciones_cambio_criterio} "
+        f"(se habrían conservado midiendo sobre celdas de banda)"
+    )
+    print("-" * 72)
     print(f"Archivo de índice guardado en: {args.index_out}")
     print(f"Archivos de muestra (.npz) en:  {args.samples_out}")
     print(f"Tiempo total en GPU:           {elapsed:.2f} s")

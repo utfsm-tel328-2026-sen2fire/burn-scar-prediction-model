@@ -9,6 +9,8 @@ Véase `proposal.md` para la motivación. Restricciones relevantes que condicion
 - Las frames descargadas desde GEE son `OaXX_radiance` (radiancia ×1000). El 24,4% de las 2121 frames descargadas son completamente "fill" (32768) y una fracción adicional son frames nocturnos con todos los píxeles a cero.
 - La normalización upstream (`S3OLCIMeanTeacherTransform._MEAN/_STD`) está calculada sobre reflectancia TOA ×10000; el proyecto usa z-score por imagen sobre radiancia. Son magnitudes distintas (ver `proposal.md`, riesgo residual).
 - `data/processed/` está en `.gitignore`: el dataset no se versiona y cada investigador lo regenera en local.
+- El entorno de desarrollo ROCm (AMD) reporta la GPU Navi 21 como `gfx1030` y el tensor `torch.cuda.is_available()` devuelve `True`, igual que en CUDA: el código que detecta el backend a partir de ese valor asume NVIDIA y activa `pin_memory` en AMD, donde es contraproducente.
+- El modelo de propagación tiene 780 k parámetros y consume 32 ms por lote de 8 en la GPU de referencia: el entrenamiento de este proyecto está lejos de saturar la GPU, de modo que cualquier sobrecoste por época proviene de la carga de datos y no del cómputo.
 
 ## Goals / Non-Goals
 
@@ -71,6 +73,16 @@ Véase `proposal.md` para la motivación. Restricciones relevantes que condicion
 - **Razón**: el área esperada quemada no depende de un corte arbitrario; introducir un corte añade una discontinuidad artificial en el producto. Fijar un único criterio para ambos usos confundiría el significado de los números.
 - **Alternativas consideradas**: usar el umbral también para el área — descartado por lo anterior.
 
+### Decisión 10: Configuración de la carga de muestras según el backend
+- **Elección**: una función de resolución elige `(num_workers, pin_memory)` según el backend: en ROCm se usa `num_workers=0` y `pin_memory=False`; en CUDA se mantienen 2 procesos auxiliares y memoria fijada. Ambos valores se pueden forzar desde la línea de comandos.
+- **Razón**: medido en la RX 6800 XT con el dataset completo, una época de entrenamiento tardaba **74 s** con 2 procesos auxiliares y memoria fijada, frente a **1,7 s** sin ellos (43×). La GPU nunca fue el cuello de botella: el coste estaba en bifurcar procesos desde un proceso con el contexto HIP ya inicializado y en reservar memoria fijada con `hipHostMalloc`, que en ROCm es carísimo. En CUDA el comportamiento habitual no sufre ese problema, y con este dataset (≈2 ms por muestra) los procesos auxiliares no compensan ni allí.
+- **Alternativas consideradas**: (a) `persistent_workers=True` — recorta el coste a partir de la segunda época (1,2 s) pero la primera y la validación siguen pagando la bifurcación, y no elimina el coste de la memoria fijada; (b) procesos auxiliares sin memoria fijada — peor (82 s por época); (c) ampliar el dataset hasta que los procesos auxiliares compensen — descartado, porque el cuello de botella no es de datos sino de proceso.
+
+### Decisión 11: Corrupción de la cicatriz vectorizada
+- **Elección**: la elección entre dilatación y erosión de la cicatriz de entrada se hace con una única tirada por lote y se aplica de forma vectorizada, en lugar de un bucle por muestra que sortea la GPU en cada iteración.
+- **Razón**: el bucle original consultaba un número aleatorio por muestra, lo que bloquea la GPU en cada muestra del lote; en un backend donde cada sincronización se paga cara, ese coste es puro desperdicio. El comportamiento observable no cambia: cada muestra recibe una única decisión morfológica.
+- **Alternativas consideradas**: mantener el bucle por muestra — descartado por lo anterior.
+
 ## Risks / Trade-offs
 
 - **[El dataset preexistente queda obsoleto]** → La regeneración es determinista y local (≈20 s con GPU); los ficheros `.npz` no se versionan, así que no hay conflicto de merge. Documentar el orden obligatorio: regenerar antes de entrenar.
@@ -78,6 +90,8 @@ Véase `proposal.md` para la motivación. Restricciones relevantes que condicion
 - **[Relleno por media puede sesgar los píxeles de borde]** → El margen afectado es de ~4,6% de los píxeles y los nodata se concentran en el borde del swath, fuera del centro de la quemadura; se acepta como mal menor frente a dejar el centinela.
 - **[El `pos_weight` por lote es ruidoso]** → Con batch size 8 y ~64×64 píxeles válidos hay miles de píxeles por lote, por lo que la estimación del cociente es estable; el acotado evita valores extremos en lotes sin positivos.
 - **[La normalización sigue sin coincidir con upstream]** → Se deja explícitamente fuera de alcance (ver Non-Goals); el impacto medido es una cicatriz con IoU 0,42 frente a CEMS, suficiente para que el target sea informativo. Pendiente de una fase de calibración posterior.
+- **[Forzar la carga en un solo proceso puede penalizar en CUDA]** → Los valores por defecto se resuelven por backend y se pueden forzar con `--num-workers` y `--pin-memory`; con un dataset mucho mayor habría que re-medir antes de fijar la configuración.
+- **[El umbral óptimo resultó inestable entre folds]** → En el primer entrenamiento completo los umbrales por fold fueron 0,1 / 0,1 / 0,3 / 0,1 / 0,3 (dispersión 0,2), con el umbral congelado en 0,1 el modelo alcanza recall 86% pero precisión 25%. El entrenamiento ya lo advierte en el informe; la causa probable es la falta de calibración de probabilidades con ~5% de positivos, no un fallo del pipeline.
 
 ## Migration Plan
 
@@ -87,9 +101,12 @@ Véase `proposal.md` para la motivación. Restricciones relevantes que condicion
 4. Reevaluar los baselines sobre el dataset nuevo para tener la referencia de comparación.
 5. Reentrenar la red.
 
+El ajuste de rendimiento de la carga de datos (grupo 7 de `tasks.md`) no requiere regenerar el dataset: solo cambia cómo se leen las muestras ya generadas.
+
 **Rollback**: revertir el commit de código y regenerar el dataset con la versión anterior del script; el dataset no está versionado, por lo que no hay migraciones de datos que revertir.
 
 ## Open Questions
 
 - Si tras la corrección el recall sigue siendo bajo, ¿el `pos_weight` por lote basta o hace falta focal loss o umbrales múltiples por fold? Depende de los resultados del entrenamiento y no cambia el diseño de este cambio.
 - ¿Merece la pena una fase de calibración radiancia→reflectancia TOA para adoptar las medias/std fijas de upstream? Requiere decidir el origen de los coeficientes ADB del sensor OLCI; es un cambio independiente.
+- El umbral óptimo fue inestable entre folds (dispersión 0,2) y el número publicable en test (F1 33,8%, IoU 23,3%) triplica al baseline B1 (F1 10,8%) pero queda lejos de TMB-S3 upstream (F1 69,45 / IoU 59,81). ¿Basta con calibrar las probabilidades (Platt/isotónica) sobre un conjunto de calibración, o el salto restante viene de la normalización radiancia→reflectancia TOA y de la definición del target?

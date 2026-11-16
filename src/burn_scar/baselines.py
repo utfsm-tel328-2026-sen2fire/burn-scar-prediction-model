@@ -78,22 +78,43 @@ def _nan_metrics(n_valid: int, n_pos: int) -> dict[str, float]:
     }
 
 
+def compact_series_metrics(aggregate: dict[str, float]) -> dict[str, float]:
+    """Extrae el resumen público de métricas de un agregado por serie."""
+    return {
+        "f1": aggregate["f1_event_mean"],
+        "iou": aggregate["iou_event_mean"],
+        "precision": aggregate["precision_event_mean"],
+        "recall": aggregate["recall_event_mean"],
+        "n_series_evaluated": aggregate["n_series_evaluated"],
+        "n_series_total": aggregate["n_series_total"],
+        "n_samples_evaluated": aggregate["n_samples_evaluated"],
+        "n_samples_total": aggregate["n_samples_total"],
+    }
+
+
 def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) -> dict[str, float]:
     """
     Promedio por serie/evento (D10) ignorando las métricas no informativas (NaN).
 
-    Devuelve además cuántas series han podido evaluarse, para detectar el caso
-    degenerado en el que el target no contiene quemado (métricas sin sentido).
+    Devuelve además cuántas series y cuántas muestras han podido evaluarse, para
+    detectar el caso degenerado en el que el target no contiene quemado (métricas
+    sin sentido). Una muestra es evaluable cuando su métrica es informativa.
     """
     keys = ("f1", "iou", "precision", "recall")
     per_series: dict[str, list[float]] = {k: [] for k in keys}
 
+    n_samples_total = 0
+    n_samples_evaluated = 0
     for m_list in series_metrics.values():
+        n_samples_total += len(m_list)
         for k in keys:
             vals = np.array([m[k] for m in m_list], dtype=float)
             vals = vals[~np.isnan(vals)]
             if vals.size:
                 per_series[k].append(float(vals.mean()))
+        # Una muestra es evaluable si su F1 es informativo (no NaN).
+        f1_vals = np.array([m["f1"] for m in m_list], dtype=float)
+        n_samples_evaluated += int((~np.isnan(f1_vals)).sum())
 
     out = {
         f"{k}_event_mean": (float(np.mean(v)) if v else float("nan"))
@@ -104,6 +125,8 @@ def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) 
     )
     out["n_series_evaluated"] = len(per_series["f1"])
     out["n_series_total"] = len(series_metrics)
+    out["n_samples_evaluated"] = n_samples_evaluated
+    out["n_samples_total"] = n_samples_total
     return out
 
 
@@ -118,9 +141,27 @@ class BaselineB0Persistence:
         return np.zeros_like(x_scar, dtype=np.float32)
 
 
+class BaselineAllBurned:
+    """
+    Trivial: predice que todo el mapa está quemado.
+
+    No es un modelo, sino la **escala mínima** de cada etiqueta: un F1 por
+    debajo de este valor no demuestra que nada se haya aprendido. Como el
+    target de ensamblaje tiene mucha más superficie que el crecimiento real,
+    este trivial puntúa distinto contra cada etiqueta y sirve de referencia
+    para no comparar F1 de etiquetas distintas entre sí.
+    """
+
+    def predict(
+        self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0
+    ) -> np.ndarray:
+        if isinstance(x_scar, Tensor):
+            x_scar = x_scar.cpu().numpy()
+        return np.ones_like(x_scar, dtype=np.float32)
+
+
 class BaselineB1RadialDilation:
     """B1: Dilatación radial isótropa de la cicatriz previa según el horizonte h."""
-
     def __init__(self, growth_rate_km_per_day: float = 0.6) -> None:
         self.rate_px_per_day = (growth_rate_km_per_day / 0.3)  # a 300 m/px -> 2 px/día
 
