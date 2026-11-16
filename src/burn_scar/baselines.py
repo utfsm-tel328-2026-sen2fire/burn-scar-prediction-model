@@ -78,6 +78,20 @@ def _nan_metrics(n_valid: int, n_pos: int) -> dict[str, float]:
     }
 
 
+def compact_series_metrics(aggregate: dict[str, float]) -> dict[str, float]:
+    """Extrae el resumen público de métricas de un agregado por serie."""
+    return {
+        "f1": aggregate["f1_event_mean"],
+        "iou": aggregate["iou_event_mean"],
+        "precision": aggregate["precision_event_mean"],
+        "recall": aggregate["recall_event_mean"],
+        "n_series_evaluated": aggregate["n_series_evaluated"],
+        "n_series_total": aggregate["n_series_total"],
+        "n_samples_evaluated": aggregate["n_samples_evaluated"],
+        "n_samples_total": aggregate["n_samples_total"],
+    }
+
+
 def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) -> dict[str, float]:
     """
     Promedio por serie/evento (D10) ignorando las métricas no informativas (NaN).

@@ -157,6 +157,55 @@ def test_sin_bbox_wkt_se_usa_el_punto_del_centroide(downloader, tmp_path):
     assert geom.value[0] == "point"
 
 
+def test_imas_del_mismo_segundo_se_colapsan_en_un_unico_raster(downloader):
+    timestamp_ms = 1_784_000_000_000
+    images = [
+        {
+            "id": "z-image",
+            "properties": {
+                "system:time_start": timestamp_ms,
+                "system:platform": "Sentinel-3B",
+            },
+        },
+        {
+            "id": "a-image",
+            "properties": {
+                "system:time_start": timestamp_ms + 125,
+                "system:platform": "Sentinel-3B",
+            },
+        },
+    ]
+
+    canonical = downloader.group_gee_images_by_timestamp(images)
+
+    assert len(canonical) == 1
+    assert canonical[0]["id"] == "a-image"
+    assert canonical[0]["duplicate_image_ids"] == ["z-image"]
+
+
+def test_colision_de_satelites_en_el_mismo_segundo_es_explicita(downloader):
+    timestamp_ms = 1_784_000_000_000
+    images = [
+        {
+            "id": "s3a",
+            "properties": {
+                "system:time_start": timestamp_ms,
+                "system:platform": "Sentinel-3A",
+            },
+        },
+        {
+            "id": "s3b",
+            "properties": {
+                "system:time_start": timestamp_ms,
+                "system:platform": "Sentinel-3B",
+            },
+        },
+    ]
+
+    with pytest.raises(ValueError, match="colisión de ruta no resoluble"):
+        downloader.group_gee_images_by_timestamp(images)
+
+
 def test_el_bbox_wkt_se_convierte_a_geojson(downloader):
     """`ee.Geometry` necesita un diccionario GeoJSON, no WKT ni una cadena."""
     geojson = downloader.wkt_to_geojson(BBOX_WKT)
@@ -293,6 +342,92 @@ def test_una_cuenta_de_servicio_inexistente_da_error_explicito(downloader, monke
         )
 
     assert "no existe" in str(exc.value)
+
+
+def test_un_fichero_estatico_valido_se_preserva(downloader, tmp_path, monkeypatch):
+    from burn_scar.quality import validate_static_layers
+
+    static_dir = tmp_path / "static"
+    series_dir = static_dir / "TEST_AOI01"
+    series_dir.mkdir(parents=True)
+    static_file = series_dir / "static_layers.npz"
+    np.savez_compressed(
+        static_file,
+        dem=np.full((64, 64), 100.0, dtype=np.float32),
+        worldcover=np.full((64, 64), 40, dtype=np.uint8),
+    )
+    before = static_file.read_bytes()
+    calls = []
+    monkeypatch.setattr(
+        downloader,
+        "download_gee_patch",
+        lambda *args, **kwargs: calls.append(args) or np.zeros((5, 64, 64), dtype=np.uint16),
+    )
+
+    downloader.process_series_gee(
+        _series_meta(), str(tmp_path / "olci"), str(static_dir)
+    )
+
+    assert static_file.read_bytes() == before
+    assert calls == []
+    with np.load(static_file) as data:
+        validate_static_layers(data["dem"], data["worldcover"])
+
+
+def test_un_fichero_estatico_invalido_se_reemplaza_por_uno_valido(downloader, tmp_path, monkeypatch):
+    from burn_scar.quality import validate_static_layers
+
+    static_dir = tmp_path / "static"
+    series_dir = static_dir / "TEST_AOI01"
+    series_dir.mkdir(parents=True)
+    static_file = series_dir / "static_layers.npz"
+    np.savez_compressed(
+        static_file,
+        dem=np.full((64, 64), 100.0, dtype=np.float32),
+        worldcover=np.zeros((64, 64), dtype=np.uint8),
+    )
+    respuestas = iter(
+        [
+            np.full((1, 64, 64), 100.0, dtype=np.float32),
+            np.full((1, 64, 64), 40, dtype=np.uint8),
+        ]
+    )
+    monkeypatch.setattr(
+        downloader,
+        "download_gee_patch",
+        lambda *args, **kwargs: next(respuestas),
+    )
+
+    downloader.process_series_gee(
+        _series_meta(), str(tmp_path / "olci"), str(static_dir)
+    )
+
+    with np.load(static_file) as data:
+        validate_static_layers(data["dem"], data["worldcover"])
+
+
+def test_un_fallo_estatico_no_deja_un_destino_invalido(downloader, tmp_path, monkeypatch):
+    static_dir = tmp_path / "static"
+    series_dir = static_dir / "TEST_AOI01"
+    series_dir.mkdir(parents=True)
+    static_file = series_dir / "static_layers.npz"
+    np.savez_compressed(
+        static_file,
+        dem=np.full((64, 64), 100.0, dtype=np.float32),
+        worldcover=np.zeros((64, 64), dtype=np.uint8),
+    )
+
+    def fallar(*args, **kwargs):
+        raise RuntimeError("fallo de descarga")
+
+    monkeypatch.setattr(downloader, "download_gee_patch", fallar)
+
+    downloader.process_series_gee(
+        _series_meta(), str(tmp_path / "olci"), str(static_dir)
+    )
+
+    assert not static_file.exists()
+    assert (series_dir / "static_layers.npz.invalid").exists()
 
 
 def test_el_dotenv_no_pisa_a_las_variables_del_entorno(downloader, tmp_path, monkeypatch):

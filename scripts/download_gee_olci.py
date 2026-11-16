@@ -23,9 +23,14 @@ import time
 import urllib.request
 from collections.abc import Mapping
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
 import ee
 import numpy as np
 import rasterio
+
+from burn_scar.quality import atomic_save_npz, validate_static_layers
 
 # Límite de imágenes devueltas por la consulta de la colección OLCI. Es una
 # salvaguarda, no un recorte con significado: si se alcanza, el inventario de la
@@ -69,6 +74,62 @@ def _a_listas(valor):
     if isinstance(valor, (list, tuple)):
         return [_a_listas(v) for v in valor]
     return valor
+
+
+def _normalize_satellite(item: dict) -> str | None:
+    """Satélite declarado por una imagen GEE, si está disponible."""
+    props = item.get("properties", {})
+    raw = props.get("system:platform") or props.get("platform")
+    if raw is None:
+        return None
+    value = str(raw).upper()
+    if "S3A" in value:
+        return "S3A"
+    if "S3B" in value:
+        return "S3B"
+    return str(raw)
+
+
+def group_gee_images_by_timestamp(img_list: list[dict]) -> list[dict]:
+    """
+    Agrupa imágenes GEE por timestamp UTC al segundo.
+
+    Los productos del mismo satélite y segundo se colapsan eligiendo el ID
+    mínimo. Si dos satélites distintos exigen la misma ruta, la colisión es
+    irresoluble y se aborta en lugar de sobrescribir un raster.
+    """
+    groups: dict[str, list[dict]] = {}
+    frame_times: dict[str, dt.datetime] = {}
+    for item in img_list:
+        props = item.get("properties", {})
+        time_start = props.get("system:time_start", 0)
+        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.timezone.utc)
+        date_tag = frame_dt.strftime("%Y%m%dT%H%M%S")
+        groups.setdefault(date_tag, []).append(item)
+        frame_times[date_tag] = frame_dt
+
+    canonical = []
+    for date_tag in sorted(groups):
+        items = sorted(groups[date_tag], key=lambda item: str(item.get("id") or ""))
+        satellites = {
+            satellite
+            for satellite in (_normalize_satellite(item) for item in items)
+            if satellite is not None
+        }
+        if len(satellites) > 1:
+            raise ValueError(
+                f"colisión de ruta no resoluble para {date_tag}: satélites {sorted(satellites)}"
+            )
+        representative = dict(items[0])
+        representative["properties"] = dict(representative.get("properties", {}))
+        representative["properties"]["system:time_start"] = int(
+            frame_times[date_tag].timestamp() * 1000
+        )
+        representative["duplicate_image_ids"] = sorted(
+            str(item.get("id") or "") for item in items[1:]
+        )
+        canonical.append(representative)
+    return canonical
 
 
 def download_gee_patch(image: ee.Image, region: ee.Geometry, crs: str, dimensions: tuple[int, int] = (64, 64)) -> np.ndarray:
@@ -200,7 +261,18 @@ def process_series_gee(
     os.makedirs(os.path.join(static_out_dir, series_id), exist_ok=True)
     static_file = os.path.join(static_out_dir, series_id, "static_layers.npz")
 
-    if not os.path.exists(static_file):
+    static_is_valid = False
+    if os.path.exists(static_file):
+        try:
+            with np.load(static_file) as existing:
+                validate_static_layers(existing["dem"], existing["worldcover"])
+            static_is_valid = True
+        except Exception as exc:
+            invalid_backup = f"{static_file}.invalid"
+            os.replace(static_file, invalid_backup)
+            print(f"   ! Capas estáticas inválidas para {series_id}: {exc}; se regeneran")
+
+    if not static_is_valid:
         try:
             # DEM GLO-30
             dem_img = ee.ImageCollection("COPERNICUS/DEM/GLO30_2024_1").select("DEM").mosaic()
@@ -209,8 +281,9 @@ def process_series_gee(
             # ESA WorldCover 2021
             wc_img = ee.ImageCollection("ESA/WorldCover/v200").select("Map").mosaic()
             wc_arr = download_gee_patch(wc_img, region, crs_str)[0].astype(np.uint8)
+            validate_static_layers(dem_arr, wc_arr)
 
-            np.savez_compressed(static_file, dem=dem_arr, worldcover=wc_arr)
+            atomic_save_npz(static_file, dem=dem_arr, worldcover=wc_arr)
         except Exception as e:
             print(f"   ! Error descargando estáticas de {series_id}: {e}")
 
@@ -265,8 +338,9 @@ def process_series_gee(
             f"en la consulta; su inventario puede estar incompleto."
         )
     downloaded_frames = 0
+    canonical_images = group_gee_images_by_timestamp(img_list)
 
-    for item in img_list:
+    for item in canonical_images:
         img_id = item["id"]
         props = item.get("properties", {})
         time_start = props.get("system:time_start", 0)
@@ -282,12 +356,13 @@ def process_series_gee(
             ee_img = ee.Image(img_id).select(S3_BANDS)
             bands_arr = download_gee_patch(ee_img, region, crs_str)
             # bands_arr shape: (5, 64, 64)
-            np.savez_compressed(
+            atomic_save_npz(
                 frame_path,
                 olci_bands=bands_arr.astype(np.uint16),
                 bands=S3_BANDS,
                 timestamp=frame_dt.isoformat(),
                 image_id=img_id,
+                duplicate_image_ids=item.get("duplicate_image_ids", []),
             )
             downloaded_frames += 1
         except Exception as e:
@@ -297,6 +372,8 @@ def process_series_gee(
         "series_id": series_id,
         "frames_downloaded": downloaded_frames,
         "total_available": len(img_list),
+        "unique_acquisitions": len(canonical_images),
+        "collapsed_images": len(img_list) - len(canonical_images),
     }
 
 

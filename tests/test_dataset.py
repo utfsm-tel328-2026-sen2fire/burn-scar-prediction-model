@@ -1,5 +1,6 @@
 import json
 
+import numpy as np
 import pytest
 import torch
 from pathlib import Path
@@ -108,6 +109,72 @@ def test_cargador_normaliza_mascaras_antiguas(tmp_path):
     assert set(torch.unique(sample["mask_cems"]).tolist()) <= {1, 255}
     assert sample["mask"][0, 0, 1].item() == 255
     assert sample["mask_cems"][0, 1, 1].item() == 255
+
+
+def test_el_cargador_expone_los_denominadores_canonicos():
+    if not INDEX_PATH.exists():
+        pytest.skip("Dataset index no generado")
+    dataset = BurnScarDataset(index_path=INDEX_PATH)
+    assert dataset.total_entries == len(dataset.index_data["samples"])
+    assert dataset.total_unique_samples == len({
+        sample["sample_id"] for sample in dataset.index_data["samples"]
+    })
+    assert dataset.total_unique_files == len({
+        sample["file"] for sample in dataset.index_data["samples"]
+    })
+    assert dataset.total_series == len({
+        sample["series_id"] for sample in dataset.index_data["samples"]
+    })
+
+
+def test_el_cargador_rechaza_identificadores_de_muestra_duplicados(tmp_path):
+    sample_file = tmp_path / "muestra.npz"
+    np.savez_compressed(
+        sample_file,
+        x_olci=np.zeros((7, 5, 64, 64), dtype=np.float16),
+        x_dem=np.zeros((64, 64), dtype=np.float32),
+        x_worldcover=np.zeros((64, 64), dtype=np.uint8),
+        x_scar=np.zeros((64, 64), dtype=np.float16),
+        horizon_days=np.float32(1.0),
+        target=np.zeros((64, 64), dtype=np.float16),
+        mask=np.ones((64, 64), dtype=np.uint8),
+    )
+    index_file = tmp_path / "index.json"
+    index_file.write_text(json.dumps({
+        "generator_version": compute_generator_version(),
+        "samples": [
+            {"sample_id": "muestra", "series_id": "a", "file": str(sample_file), "fold": 0},
+            {"sample_id": "muestra", "series_id": "b", "file": str(sample_file), "fold": 0},
+        ],
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="sample_id duplicados"):
+        BurnScarDataset(index_path=index_file)
+
+
+def test_el_cargador_rechaza_rutas_de_muestra_duplicadas(tmp_path):
+    sample_file = tmp_path / "muestra.npz"
+    np.savez_compressed(
+        sample_file,
+        x_olci=np.zeros((7, 5, 64, 64), dtype=np.float16),
+        x_dem=np.zeros((64, 64), dtype=np.float32),
+        x_worldcover=np.zeros((64, 64), dtype=np.uint8),
+        x_scar=np.zeros((64, 64), dtype=np.float16),
+        horizon_days=np.float32(1.0),
+        target=np.zeros((64, 64), dtype=np.float16),
+        mask=np.ones((64, 64), dtype=np.uint8),
+    )
+    index_file = tmp_path / "index.json"
+    index_file.write_text(json.dumps({
+        "generator_version": compute_generator_version(),
+        "samples": [
+            {"sample_id": "a", "series_id": "s", "file": str(sample_file), "fold": 0},
+            {"sample_id": "b", "series_id": "s", "file": str(sample_file), "fold": 0},
+        ],
+    }), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="rutas de fichero duplicadas"):
+        BurnScarDataset(index_path=index_file)
 
 
 def test_muestra_sin_ronda_previa_marca_la_validez_como_no_evaluable(tmp_path):

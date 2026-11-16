@@ -22,6 +22,10 @@
 | [`experiment-tracking.md`](experiment-tracking.md) | TensorBoard compartido, checkpoints, NFS | guía |
 | [`nixos.md`](nixos.md) | Cómo trabajar en NixOS con devenv: shell, acelerador, tareas | guía |
 
+Fuera de `docs/`, `artefactos/canonicos.json` registra las sumas de verificación de los
+índices de dataset, del umbral operativo y de los checkpoints del run canónico; se
+comprueba con `scripts/verify_canonical_artifacts.py`.
+
 El corte es **lo que puede cambiar vs. lo que ya está cerrado**: `decisiones.md` es el único
 sitio donde se toca lo que está abierto; `dataset.md` y `datos.md` son especificación.
 
@@ -50,6 +54,9 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Entradas del modelo en operación | `operacion.md` §1 |
 | Latencias por fuente | `datos.md` §1 y §6 |
 | Estado del arte, benchmarks, por qué 300 m | `investigacion.md` §2 y §3 |
+| Composición canónica del dataset y exclusiones | `operacion.md` §9 |
+| Resultados canónicos y soporte por banda de horizonte | `operacion.md` §9 |
+| Sumas de verificación de los artefactos | `artefactos/canonicos.json` |
 
 > Esta tabla **no repite los valores**: solo dice dónde vive cada uno. Los valores están en
 > el fichero canónico; si un número cambia, cambia ahí y en ningún otro sitio.

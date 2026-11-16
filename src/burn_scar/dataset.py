@@ -26,7 +26,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # identifica la versión del generador: si cambia alguno, el dataset almacenado
 # queda obsoleto y hay que regenerarlo.
 GENERATOR_SOURCES = (
+    PROJECT_ROOT / "scripts" / "build_cems_manifest.py",
+    PROJECT_ROOT / "scripts" / "download_gee_olci.py",
     PROJECT_ROOT / "scripts" / "build_pytorch_dataset.py",
+    PROJECT_ROOT / "src" / "burn_scar" / "quality.py",
     PROJECT_ROOT / "src" / "burn_scar" / "dataset.py",
 )
 
@@ -92,6 +95,31 @@ def generator_source_names(sources: Sequence[Path] | None = None) -> list[str]:
         except ValueError:
             out.append(str(path))
     return out
+
+
+def validate_unique_sample_index(samples: Sequence[dict]) -> None:
+    """Rechaza índices con identificadores o rutas de muestra repetidos."""
+    duplicate_ids = _duplicates(sample.get("sample_id") for sample in samples)
+    duplicate_files = _duplicates(sample.get("file") for sample in samples)
+    problems = []
+    if duplicate_ids:
+        problems.append(f"sample_id duplicados: {sorted(duplicate_ids)}")
+    if duplicate_files:
+        problems.append(f"rutas de fichero duplicadas: {sorted(duplicate_files)}")
+    if problems:
+        raise ValueError(
+            "El índice del dataset no es canónico (" + "; ".join(problems) + "). "
+            "Regenera el dataset antes de entrenar o evaluar."
+        )
+
+
+def _duplicates(values: Sequence[str | None]) -> list[str]:
+    """Valores no nulos que aparecen más de una vez."""
+    counts: dict[str, int] = {}
+    for value in values:
+        if value is not None:
+            counts[str(value)] = counts.get(str(value), 0) + 1
+    return [value for value, count in counts.items() if count > 1]
 
 
 def _warn_if_dataset_is_stale(index_data: dict) -> None:
@@ -284,6 +312,12 @@ class BurnScarDataset(Dataset):
         _warn_if_dataset_is_stale(index_data)
 
         all_samples = index_data.get("samples", [])
+        validate_unique_sample_index(all_samples)
+        self.index_data = index_data
+        self.total_entries = len(all_samples)
+        self.total_unique_samples = len({s.get("sample_id") for s in all_samples})
+        self.total_unique_files = len({s.get("file") for s in all_samples})
+        self.total_series = len({s.get("series_id") for s in all_samples})
         if folds is not None:
             if isinstance(folds, int):
                 folds = [folds]
@@ -366,6 +400,7 @@ def get_cv_dataloaders(
     num_workers: int | None = None,
     index_path: str | Path | None = None,
     pin_memory: bool | None = None,
+    seed: int | None = None,
 ) -> tuple[DataLoader, DataLoader]:
     """
     Retorna (train_loader, val_loader) para un fold de validación específico (0..4).
@@ -383,12 +418,18 @@ def get_cv_dataloaders(
     train_dataset = BurnScarDataset(index_path=index_path, folds=train_folds)
     val_dataset = BurnScarDataset(index_path=index_path, folds=[val_fold])
 
+    generator = None
+    if seed is not None:
+        generator = torch.Generator()
+        generator.manual_seed(int(seed))
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=nw,
         pin_memory=pin,
+        generator=generator,
     )
     val_loader = DataLoader(
         val_dataset,

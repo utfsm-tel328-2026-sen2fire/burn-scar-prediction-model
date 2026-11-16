@@ -297,7 +297,7 @@ uv run --extra rocm python scripts/evaluate_baselines.py
 
 # 3. Entrenar (≈1 s por época y fold → ~1,5 min para 15 épocas × 5 folds)
 nohup uv run --extra rocm python scripts/train_propagation.py \
-      --epochs 15 --tag prop_v4 > runs/prop_v4.log 2>&1 &
+      --epochs 15 --seed 42 --tag prop_v4_integrity > runs/prop_v4_integrity.log 2>&1 &
 ```
 
 **El paso 1 no es opcional.** La cicatriz de entrada (`x_scar`) y el target están
@@ -327,7 +327,7 @@ compensa pagar la carga en paralelo, y conviene medir antes de asumir.
 
 ### Runs largos
 
-El entrenamiento completo son ~2 min con el dataset vigente (344 muestras): lánzalo con `nohup` (o `tmux`) y vigila el log.
+El entrenamiento completo son ~2 min con el dataset vigente (295 muestras): lánzalo con `nohup` (o `tmux`) y vigila el log.
 Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el proceso.
 
 ### Cómo leer los números
@@ -365,95 +365,127 @@ El dataset guarda **dos etiquetas** por muestra:
 
 No son la misma cosa. La de ensamblaje resta una **fotografía** de TMB-S3, que en el frente
 de fuego se queda corta: el resultado mezcla crecimiento nuevo con quemado que ya existía
-y que el generador no detectó. Medido sobre las **344 muestras** del dataset vigente:
+y que el generador no detectó. Medido sobre las **295 muestras** del dataset vigente:
 
 | | Etiqueta de ensamblaje | Etiqueta de referencia |
 |---|---|---|
-| Superficie mediana a umbral 0,5 | 56 px | **5 px** (11,1× menos) |
-| IoU entre ambas | **0,083** | — |
+| Superficie mediana a umbral 0,5 | 55,5 px | **1,5 px** (37× menos) |
+| IoU media entre ambas | **0,033** | — |
 
-**Por eso el F1 se multiplica por 3,7**: una etiqueta 11 veces más grande es más fácil de
-acertar.
+**Por eso el F1 de ensamblaje no puede interpretarse como propagación**: una etiqueta mucho
+más grande es más fácil de acertar.
 
-### El dataset vigente y por qué tiene 344 muestras
+### El dataset vigente y por qué tiene 295 muestras
 
-El dataset se regeneró el 2026-11-15 al anclar la ventana temporal en el frame `f` (ver
-`decisiones.md` §1.5, A2 y A3). Antes tenía 390 muestras y ahora tiene **344**: se descartan
-**46**, y el motivo está medido, no supuesto.
+El dataset canónico se regeneró el 2026-11-16 con identidad de adquisición única, validación
+de capas estáticas e inventario de cobertura. El manifiesto contiene **411 muestras
+candidatas únicas** tras colapsar tres productos CDSE duplicados.
 
-| Motivo del descarte | Muestras |
-|---|---|
-| La adquisición de `f` no está en el inventario local | 24 |
-| La adquisición de `f` existe pero no es utilizable (nocturna o con >20 % de píxeles sin dato) | 22 |
-| **Total** | **46** |
+| Motivo del descarte | Candidatas |
+|---|---:|
+| `EMSR785_AOI01`: WorldCover completamente vacío en una descarga limpia | 48 |
+| Etiquetas CEMS rasterizadas no disponibles | 5 |
+| La ronda objetivo no existe en la etiqueta local | 19 |
+| Adquisición de `f` ausente o no utilizable | 44 |
+| **Total** | **116** |
+| **Muestras ensambladas** | **295** |
 
-Las 22 del segundo caso **antes se usaban con otra imagen**: el ensamblador tomaba la última
-adquisición anterior a `f` y la ponía en su sitio, con lo que la cicatriz y la etiqueta
-quedaban ancladas a un instante distinto del que define el horizonte. Descartarlas es lo que
-exige el spec.
+Todas las 295 entradas tienen `sample_id` y ruta de fichero únicos, repartidas en 40 series.
+La serie excluida y el motivo quedan registrados en `inventory.excluded_series` del índice
+(`EMSR785_AOI01`, `reason: invalid_static_layers`, `stage: static_layers`). Composición por
+fold: 29 (f0), 15 (f1), 108 (f2), 95 (f3), 23 (f4) y **25 fuera de dominio** (fold -1, test).
 
-Las 24 primeras sí son recuperables: la consulta de imágenes descarga ahora por la **extensión
-del AOI** y no por el punto del centroide (`decisiones.md` §1.5, A1). Con el inventario
-completo, **412 de las 414 muestras del manifiesto** tienen su adquisición de `f` disponible;
-las 2 que faltan no tienen adquisición de `f` en ninguna de las dos fuentes.
+El soporte de horizontes es explícito y no se filtra: 171 muestras en `(0,1]`, 98 en `(1,3]`,
+25 en `(3,7]`, 1 en `(7,14]` y ninguna en `(14,+inf)`. La mediana es 0,897 días y el máximo
+observado 7,024. **No hay horizonte máximo en el dataset ni en la evaluación**: `h` se
+conserva continuo y las bandas son solo diagnóstico, de modo que ninguna banda filtra el
+entrenamiento ni las métricas globales. **Ninguna muestra representa un arranque en frío**:
+las 295 tienen cicatriz no vacía y el índice declara `cold_start_represented: false`.
 
-Composición por fold: 30 (f0), 16 (f1), 108 (f2), 95 (f3), 23 (f4) y **72 fuera de dominio**
-(fold -1, el conjunto de test).
+### Protocolo de conteos y procedencia
 
-### El resultado del diagnóstico
+Todo número que se publica distingue cuatro denominadores, que nunca se colapsan en uno:
 
-Conjunto de test (fold -1, fuera de dominio), **umbral operativo congelado en 0,20** para
-todo lo que se compara (el modelo y los baselines, con la misma agregación por evento y el
-mismo subconjunto de muestras evaluables):
-
-| Modelo | F1 contra la etiqueta de ensamblaje | F1 contra la **referencia** (propagación real) |
+| Denominador | Qué cuenta | Dónde vive |
 |---|---|---|
-| B0 persistencia | 0,00% | 0,00% |
-| B1 dilatación radial | 14,98% | 5,40% |
-| Trivial "todo quemado" | 14,25% | 5,83% |
-| **Modelo de producción** (`prop_v4`) | **33,73%** | **9,06%** |
-| Modelo entrenado con la referencia (`prop_cems_diag_v4`) | 9,16% | 9,16% |
+| **Entradas** | filas del índice, una por muestra candidata aceptada | `inventory.total_entries` |
+| **Muestras únicas** | entradas con `sample_id` distinto | `inventory.total_unique_samples` |
+| **Ficheros únicos** | entradas con ruta de fichero distinta | `inventory.total_unique_files` |
+| **Series** | valores distintos de `series_id` | `inventory.total_series` |
 
-El número de **muestras evaluables** (las que tienen métrica informativa) depende de la
-etiqueta:
+A esos se añaden los **muestras evaluables** de cada etiqueta, que son un subconjunto
+distinto según la verdad contenga quemado o no. La evaluación informa del mismo descriptivo
+para el modelo y para los baselines (`evaluated_set`), de modo que dos cifras solo se comparan
+si comparten índice, umbral, etiquetas y subconjunto.
 
-| Etiqueta | Umbral 0,50 (baselines) | Umbral 0,20 (operativo) |
+La procedencia es obligatoria en cada artefacto: el índice registra la versión del generador,
+la huella SHA-256 del manifiesto de entrada y una huella de contenido estable
+(`dataset_content_sha256`); `operational_threshold.json` registra la huella del índice, la
+semilla, el modo de target, el esquema, el soporte de horizontes y la huella de cada
+checkpoint. `scripts/verify_canonical_artifacts.py` contrasta esas sumas de verificación
+contra `artefactos/canonicos.json`.
+
+### Resultados canónicos
+
+Conjunto de test (fold -1, fuera de dominio: 25 muestras únicas, 7 series), **umbral
+operativo congelado en 0,10**, con modelo y baselines sobre el mismo índice, el mismo umbral,
+las mismas etiquetas y el mismo subconjunto evaluable.
+
+**Contra la etiqueta de ensamblaje** (`target`, incluye quemado no detectado por TMB-S3):
+
+| Modelo | F1 | IoU | Precisión | Recall | Evaluables |
+|---|---:|---:|---:|---:|---|
+| B0 persistencia | 0,00% | 0,00% | 0,00% | 0,00% | 24/25 |
+| B1 dilatación radial | 15,94% | 9,00% | 19,11% | 30,07% | 24/25 |
+| Trivial "todo quemado" | 16,29% | 9,41% | 9,41% | 100,00% | 24/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **25,45%** | 27,64% | 87,04% | 24/25 |
+
+**Contra la referencia** (crecimiento real entre rondas CEMS, que es propagación):
+
+| Modelo | F1 | IoU | Precisión | Recall | Evaluables |
+|---|---:|---:|---:|---:|---|
+| B0 persistencia | 0,00% | 0,00% | 0,00% | 0,00% | 23/25 |
+| B1 dilatación radial | 7,30% | 3,90% | 7,74% | 12,22% | 23/25 |
+| Trivial "todo quemado" | 8,42% | 4,73% | 4,73% | 100,00% | 23/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | **14,80%** | **8,78%** | 9,88% | 82,31% | 23/25 |
+
+**Soporte por banda de horizonte** (estrato de diagnóstico; ninguna banda filtra nada):
+
+| Banda | Ensamblaje | Referencia |
 |---|---|---|
-| De ensamblaje | 71/72 | 71/72 |
-| De referencia | 48/72 | 49/72 |
+| `(0,1]` | F1 32,24%, IoU 21,91%, 18/19 evaluables (6 series) | F1 16,59%, IoU 9,97%, 17/19 evaluables (6 series) |
+| `(1,3]` | F1 44,68%, IoU 31,43%, 6/6 evaluables (5 series) | F1 17,63%, IoU 10,35%, 6/6 evaluables (5 series) |
 
-Contra la etiqueta de referencia, que tiene 11× menos superficie, 23 de las 72 muestras del
-test no tienen quemado en la verdad y por tanto **no son medibles**. En este dataset el
-subconjunto evaluable casi no cambia entre el umbral 0,50 y el operativo, pero en el dataset
-anterior sí cambiaba, y por eso los números de la tabla se miden todos al umbral operativo: a
-0,50 los mismos baselines sacan 12,36% (ensamblaje) y 3,25% (referencia), sobre otro
-subconjunto.
+No hay soporte de test en `(3,7]`, `(7,14]` ni `(14,+inf)`: el conjunto de test solo cubre
+hasta tres días. Las métricas globales de las tablas anteriores sí incluyen todas las
+muestras únicas del conjunto.
+
+La CV diagnóstica `prop_cems_diag_v4_integrity` usa su propio dataset, su propia semilla y su
+propio umbral congelado (0,20, con dispersión 0,30) y obtiene 9,43% contra ambas etiquetas
+sobre 23/25 muestras; al cambiar etiqueta, umbral y subconjunto, **no es comparable
+directamente** con las tablas anteriores.
 
 Cómo leerlo:
 
-- **El número publicable de propagación es 9,06%**, no 33,73%. Este último mide desempeño
+- **El número publicable de propagación es 14,80%**, no 36,51%. El segundo mide desempeño
   contra una etiqueta que incluye quemado no detectado.
-- **El modelo sí aprende, pero menos de lo que parecía**: contra el crecimiento real saca
-  9,06%, **1,55× el trivial de esa misma etiqueta y ese mismo umbral** (5,83%). La vara
-  real contra el crecimiento real es **~5,8%**: contra la verdad, B1 (5,40%) y no hacer nada
-  (5,83%) siguen siendo prácticamente indistinguibles, y el modelo está por encima de los
-  dos, pero no por un orden de magnitud.
-- **Entrenar con la etiqueta limpia no mejora**: 9,16% frente a 9,06% contra la misma verdad,
-  al mismo umbral (0,20) y sobre el mismo subconjunto (49/72 muestras). Empate, dentro del
-  ruido. A su propio umbral operativo (0,10) ese modelo saca 11,27%, pero sobre 70/72
-  muestras, o sea otro subconjunto y otro número, y por tanto no comparable. El target de
-  referencia tiene 11× menos superficie y es más ruidoso en términos relativos, así que no es
-  un juego de suma cero: el problema de propagación es genuinamente difícil.
-- **Recall 81% con precisión 26%**: el modelo acierta *dónde* se va a quemar, pero
-  sobreestima la anchura del frente. Es el siguiente frente de trabajo.
-- **El umbral no es estable**: los óptimos por fold van de 0,10 a 0,40 y el entrenamiento
-  avisa. El umbral congelado (mediana, 0,20) es poco fiable; los números de test hay que
+- Contra el crecimiento real, el modelo está por encima de B1 (7,30%) y del trivial
+  (8,42%), pero las diferencias siguen siendo modestas y el test contiene solo 7 series y
+  25 muestras.
+- **Recall 82,3% con precisión 9,9%**: el modelo acierta *dónde* se va a quemar, pero
+  sobreestima la anchura del frente.
+- **El umbral no es estable**: los óptimos por fold van de 0,10 a 0,50 y el entrenamiento
+  avisa. El umbral congelado (mediana, 0,10) es poco fiable; los números de test hay que
   leerlos con esa reserva.
+- **El arranque en frío no está representado**: no se publica un desempeño para ese
+  escenario y no se fabrica una muestra artificial.
 
 Las cifras de las versiones anteriores del dataset están **sustituidas** por estas. La
 comparación con ellas no es válida: el dataset anterior tenía la ventana temporal anclada a
-una adquisición distinta de `f`, y sus etiquetas no correspondían a la definición de quemado
-nuevo.
+una adquisición distinta de `f`, sus etiquetas no correspondían a la definición de quemado
+nuevo y su índice contenía entradas duplicadas. El run `prop_v4` queda marcado como
+**histórico y no publicable** (`checkpoints/khaen_prop_v4_20261115_210453/historico.json`) y
+las herramientas avisan cuando se le pide evaluar con él.
 
 ### Cómo reproducir el diagnóstico
 
@@ -473,13 +505,42 @@ uv run --extra rocm python scripts/evaluate_baselines.py \
 # 3. Reevaluar un run existente sin reentrenar
 uv run --extra rocm python scripts/train_propagation.py --eval-only checkpoints/<run>
 
+# 3b. Auditar la integridad y el inventario del dataset canónico
+uv run --extra rocm python scripts/audit_dataset_integrity.py \
+      --index data/processed/dataset_index.json \
+      --output runs/dataset_integrity_production.json
+
 # 4. Dataset y entrenamiento con la etiqueta de referencia (diagnóstico)
 uv run --extra rocm python scripts/build_pytorch_dataset.py --target-mode cems \
       --samples-out data/processed_target_cems/samples \
       --index-out data/processed_target_cems/dataset_index.json
-uv run --extra rocm python scripts/train_propagation.py --epochs 15 \
-      --index data/processed_target_cems/dataset_index.json --tag prop_cems_diag_v4
+uv run --extra rocm python scripts/train_propagation.py --epochs 15 --seed 42 \
+      --index data/processed_target_cems/dataset_index.json --tag prop_cems_diag_v4_integrity
 ```
+
+### Artefactos canónicos y sus sumas de verificación
+
+`artefactos/canonicos.json` registra la huella de los dos índices de dataset, del umbral
+operativo y de cada checkpoint del run canónico. Se comprueba con:
+
+```bash
+uv run --extra rocm python scripts/verify_canonical_artifacts.py
+```
+
+El script recalcula las sumas y las contrasta con el manifiesto; si algo ha cambiado, lo
+informa y devuelve código de error. Para regenerar el manifiesto tras producir nuevos
+artefactos: `--write`.
+
+| Artefacto | Huella de contenido (SHA-256) |
+|---|---|
+| Índice de producción (`data/processed/dataset_index.json`) | `0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2` |
+| Índice de referencia (`data/processed_target_cems/dataset_index.json`) | `aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd` |
+
+La **huella de contenido** no depende de la cabecera temporal del índice: dos regeneraciones
+del mismo dataset producen la misma huella aunque el fichero cambie en `generated_at`. La
+**huella de fichero** sí cambia con cada regeneración, y por eso es la que permite localizar
+el índice exacto con el que se entrenó un run concreto (`dataset_index_sha256` en
+`operational_threshold.json`).
 
 ### Ojo con comparar etiquetas distintas
 
@@ -488,14 +549,11 @@ mínima (el trivial "todo quemado"), que es la referencia con la que hay que lee
 Por eso `evaluate_baselines.py` imprime siempre el trivial al lado.
 
 **Y un F1 a un umbral no se compara con un F1 a otro umbral.** `evaluate_baselines.py`
-evalúa por defecto a umbral 0,50 (donde las predicciones binarias de B0/B1 y el trivial son
-naturales), mientras que el modelo se evalúa al **umbral operativo congelado** (0,10 en el run
-actual). Los dos conjuntos de números se apoyan además en subconjuntos de muestras distintos:
-contra la etiqueta de referencia hay 54/78 muestras evaluables a 0,50 y 76/78 a 0,10. Para
-comparar modelo y baselines hay que ponerlos al mismo umbral, que es lo que hace
-`--operational-threshold-from <dir_de_checkpoints>`: lee el umbral congelado del run y lo
-aplica a los baselines, de modo que ambos se miden sobre la misma discretización de la
-verdad y las mismas muestras evaluables. La tabla de la sección anterior está medida al
+puede evaluar a cualquier umbral, pero para comparar con el modelo hay que usar el
+**umbral operativo congelado** (0,10 en el run canónico). El umbral también determina qué
+píxeles de la verdad cuentan como quemado y, por tanto, qué muestras son evaluables. La
+opción `--operational-threshold-from <dir_de_checkpoints>` aplica a los baselines el mismo
+umbral y el mismo subconjunto que el modelo. La tabla de la sección anterior está medida al
 umbral operativo para todos.
 
 ### Qué cuenta como evaluable, y qué significan las máscaras
@@ -518,14 +576,14 @@ el recuento es parte del número, no un detalle del informe. Cuando una muestra 
 ronda CEMS previa, su validez común es íntegramente `255` y su métrica contra la etiqueta de
 referencia no es informativa: cuenta como no evaluable, no como un cero.
 
-Medido sobre los conjuntos del proyecto:
+Medido sobre los conjuntos canónicos al umbral operativo 0,10:
 
-| Conjunto | Etiqueta | Series evaluables | Muestras evaluables (umbral 0,50) |
+| Conjunto | Etiqueta | Series evaluables | Muestras evaluables |
 |---|---|---|---|
-| Validación (folds 0-4, 312 muestras) | De ensamblaje | 33/33 | 280/312 |
-| Validación (folds 0-4, 312 muestras) | De referencia | 27/33 | 205/312 |
-| Test (fold -1, 78 muestras) | De ensamblaje | 8/8 | 78/78 |
-| Test (fold -1, 78 muestras) | De referencia | 8/8 | 54/78 |
+| Validación (folds 0-4, 270 muestras) | De ensamblaje | 33/33 | 256/270 |
+| Validación (folds 0-4, 270 muestras) | De referencia | 33/33 | 238/270 |
+| Test (fold -1, 25 muestras) | De ensamblaje | 7/7 | 24/25 |
+| Test (fold -1, 25 muestras) | De referencia | 7/7 | 23/25 |
 
 ### Sobre la comparación con TMB-S3 upstream
 
@@ -536,8 +594,8 @@ etiqueta qué está quemado, con etiquetas derivadas de MCD64A1 y una regla "OR"
 Este proyecto evalúa **pronóstico**: predecir qué se quemará en las próximas horas, con la
 etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que el 69,45 no es una
 meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **el trivial "todo
-quemado"** y **B1**, medidos al mismo umbral operativo que el modelo (16,03% y 15,80%
-contra la etiqueta de ensamblaje; 7,46% y 6,88% contra la referencia), porque usan la misma
+quemado"** y **B1**, medidos al mismo umbral operativo que el modelo (16,29% y 15,94%
+contra la etiqueta de ensamblaje; 8,42% y 7,30% contra la referencia), porque usan la misma
 información disponible que el modelo.
 
 Donde el número de upstream sí es útil es como referencia de la **calidad del generador de

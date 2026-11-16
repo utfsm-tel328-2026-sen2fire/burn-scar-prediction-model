@@ -33,8 +33,20 @@ from burn_scar.dataset import (
     generator_source_names,
     is_chronological,
     resolve_sample_window,
+    validate_unique_sample_index,
 )
 from burn_scar.models import load_tmb_s3, predict_burn_scar
+from burn_scar.quality import (
+    DATASET_INDEX_SCHEMA_VERSION,
+    atomic_save_npz,
+    canonical_json_sha256,
+    file_sha256,
+    horizon_band,
+    scar_coverage,
+    summarize_horizons,
+    summarize_scar_coverage,
+    validate_static_layers,
+)
 
 # Una adquisición con más de este porcentaje de píxeles sin dato se descarta
 # (mismo criterio que la ficha del dataset TMB-S3 upstream).
@@ -172,6 +184,7 @@ def main() -> int:
     os.makedirs(args.samples_out, exist_ok=True)
 
     sample_index = []
+    excluded_series: list[dict] = []
     total_samples = 0
     n_descartadas_sin_f = 0
     n_ventanas_terminan_en_f = 0
@@ -209,13 +222,43 @@ def main() -> int:
         }
         round_times = [round_time_by_num.get(int(n)) for n in round_numbers]
 
-        # Cargar estáticas (.npz)
+        # Cargar y validar capas estáticas (.npz)
         static_file = f"data/raw/static/{sid}/static_layers.npz"
         if not os.path.exists(static_file):
+            invalid_backup = Path(f"{static_file}.invalid")
+            if invalid_backup.exists():
+                try:
+                    with np.load(invalid_backup) as invalid:
+                        validate_static_layers(invalid["dem"], invalid["worldcover"])
+                    detail = str(invalid_backup)
+                except Exception as exc:
+                    detail = str(exc)
+                reason = "invalid_static_layers"
+            else:
+                reason = "missing_static_layers"
+                detail = static_file
+            excluded_series.append({
+                "series_id": sid,
+                "stage": "static_layers",
+                "reason": reason,
+                "detail": detail,
+            })
+            print(f"   ! {sid}: capas estáticas no utilizables ({reason}); serie excluida")
             continue
         static_npz = np.load(static_file)
         dem = static_npz["dem"].astype(np.float32)  # (64, 64)
         worldcover = static_npz["worldcover"].astype(np.float32)  # (64, 64)
+        try:
+            validate_static_layers(dem, worldcover)
+        except ValueError as exc:
+            excluded_series.append({
+                "series_id": sid,
+                "stage": "static_layers",
+                "reason": "invalid_static_layers",
+                "detail": str(exc),
+            })
+            print(f"   ! {sid}: capas estáticas inválidas ({exc}); serie excluida")
+            continue
 
         # Cargar los frames OLCI de la serie y descartar los no utilizables:
         # - más de un 20% de píxeles sin dato (borde del swath)
@@ -386,9 +429,9 @@ def main() -> int:
                         f"{{{MASK_EVALUABLE}, {MASK_IGNORED}}}"
                     )
 
-            # Guardar muestra en disco
+            # Guardar muestra en disco de forma atómica
             sample_file = os.path.join(args.samples_out, f"{sample_id}.npz")
-            np.savez_compressed(
+            atomic_save_npz(
                 sample_file,
                 x_olci=olci_stored.astype(np.float16),
                 x_dem=dem.astype(np.float32),
@@ -401,6 +444,7 @@ def main() -> int:
                 mask_cems=mask_cems.astype(np.uint8),
             )
 
+            coverage = scar_coverage(scar_f)
             fold_id = series_fold_map.get(sid, 0)
             sample_index.append({
                 "sample_id": sample_id,
@@ -408,6 +452,13 @@ def main() -> int:
                 "file": sample_file,
                 "fold": fold_id,
                 "horizon_days": horizon_days,
+                "horizon_band": horizon_band(horizon_days),
+                "scar_state": coverage["state"],
+                "scar_coverage": {
+                    "state": coverage["state"],
+                    "fraction_gt_zero": coverage["fraction_gt_zero"],
+                    "fraction_ge_0_5": coverage["fraction_ge_0_5"],
+                },
                 "frame_keys": selected_keys,
                 "frame_key": f_key,
                 "target_mode": args.target_mode,
@@ -422,18 +473,48 @@ def main() -> int:
         print(f"[{idx:>2}/{len(series_meta_list)}] {sid:<18} -> {series_samples_count} muestras ensambladas (Fold {series_fold_map.get(sid, 0)})")
 
     # Guardar índice final del dataset
+    validate_unique_sample_index(sample_index)
+    horizon_distribution = summarize_horizons(s["horizon_days"] for s in sample_index)
+    scar_summary = summarize_scar_coverage(
+        (s["scar_coverage"] for s in sample_index),
+        (s["series_id"] for s in sample_index),
+    )
+    folds_distribution = {
+        f"fold_{f}": sum(1 for s in sample_index if s["fold"] == f)
+        for f in range(5)
+    }
+    inventory = {
+        "total_entries": len(sample_index),
+        "total_unique_samples": len({s["sample_id"] for s in sample_index}),
+        "total_unique_files": len({s["file"] for s in sample_index}),
+        "total_series": len({s["series_id"] for s in sample_index}),
+        "folds_distribution": folds_distribution,
+        "out_of_domain_samples": sum(1 for s in sample_index if s["fold"] == -1),
+        "horizon_distribution": horizon_distribution,
+        "scar_coverage": scar_summary,
+        "excluded_series": excluded_series,
+    }
+    # Huella de contenido: estable entre regeneraciones del mismo dataset,
+    # aunque el fichero cambie en su cabecera temporal.
+    dataset_content_sha256 = canonical_json_sha256({
+        "inventory": inventory,
+        "samples": sample_index,
+        "target_mode": args.target_mode,
+    })
     with open(args.index_out, "w", encoding="utf-8") as f:
         json.dump({
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "dataset_index_schema_version": DATASET_INDEX_SCHEMA_VERSION,
+            "dataset_content_sha256": dataset_content_sha256,
             "target_mode": args.target_mode,
             "generator_version": compute_generator_version(),
             "generator_sources": generator_source_names(),
+            "source_manifest_sha256": file_sha256(args.cems_manifest),
+            "catalog_olci": cems_manifest.get("summary", {}).get("olci_catalog", {}),
             "total_samples": len(sample_index),
-            "folds_distribution": {
-                f"fold_{f}": sum(1 for s in sample_index if s["fold"] == f)
-                for f in range(5)
-            },
+            "folds_distribution": folds_distribution,
             "out_of_domain_samples": sum(1 for s in sample_index if s["fold"] == -1),
+            "inventory": inventory,
             "samples": sample_index,
         }, f, indent=2, ensure_ascii=False)
 
@@ -449,6 +530,17 @@ def main() -> int:
                 n_huerfanos += 1
     if n_huerfanos:
         print(f"  Paquetes huérfanos eliminados: {n_huerfanos}")
+
+    remaining = {
+        os.path.basename(path)
+        for path in glob.glob(os.path.join(args.samples_out, "*.npz"))
+    }
+    if remaining != written:
+        raise RuntimeError(
+            "Los paquetes en disco no reconcilian con el índice: "
+            f"faltan={sorted(written - remaining)[:5]}, "
+            f"sobran={sorted(remaining - written)[:5]}"
+        )
 
     elapsed = time.time() - start_time
     print("\n" + "=" * 72)

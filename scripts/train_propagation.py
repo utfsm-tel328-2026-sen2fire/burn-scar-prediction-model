@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sys
 import time
 from collections import defaultdict
@@ -18,9 +19,20 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from burn_scar.baselines import aggregate_series_metrics, compute_metrics_numpy
+from burn_scar.baselines import (
+    aggregate_series_metrics,
+    compact_series_metrics,
+    compute_metrics_numpy,
+)
 from burn_scar.dataset import BurnScarDataset, get_cv_dataloaders, resolve_loader_options
 from burn_scar.models import BurnScarPropagationModel, masked_bce_dice_loss
+from burn_scar.quality import (
+    describe_evaluated_set,
+    file_sha256,
+    historical_status,
+    horizon_band,
+    state_dict_sha256,
+)
 from burn_scar.tracking import ExperimentTracker
 
 # Umbrales evaluados en validación: un modelo probabilístico desbalanceado
@@ -31,6 +43,43 @@ DEFAULT_THRESHOLD = 0.5
 # Fold de test: series fuera de dominio (no mediterráneas), nunca visto en
 # validación ni en la elección del umbral.
 TEST_FOLD = -1
+DEFAULT_SEED = 42
+
+
+def set_reproducibility_seed(seed: int) -> None:
+    """Fija las fuentes de aleatoriedad usadas por entrenamiento y carga."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    if hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def build_dataset_provenance(
+    index_path: str | Path,
+    index_payload: dict,
+    seed: int,
+    tag: str,
+) -> dict:
+    """Procedencia común de dataset, checkpoint y métricas."""
+    inventory = index_payload.get("inventory", {})
+    return {
+        "run_tag": tag,
+        "seed": seed,
+        "dataset_index": str(index_path),
+        "dataset_index_sha256": file_sha256(index_path),
+        "dataset_content_sha256": index_payload.get("dataset_content_sha256"),
+        "dataset_generator_version": index_payload.get("generator_version"),
+        "dataset_schema_version": index_payload.get("dataset_index_schema_version"),
+        "dataset_target_mode": index_payload.get("target_mode"),
+        "dataset_counts": inventory,
+        "horizon_support": inventory.get("horizon_distribution", {}),
+        "cold_start_coverage": inventory.get("scar_coverage", {}),
+    }
 
 
 @torch.no_grad()
@@ -56,6 +105,14 @@ def evaluate_fold(
     series_metrics_ref: dict[str, dict[float, list[dict[str, float]]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    horizon_metrics: dict[str, dict[float, dict[str, dict[str, list]]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
+    )
+    cold_metrics: dict[float, dict[str, dict[str, list]]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(list))
+    )
+    cold_sample_count = 0
+    cold_series: set[str] = set()
 
     for batch in val_loader:
         x_olci = batch["x_olci"].to(device)
@@ -78,16 +135,34 @@ def evaluate_fold(
         ref_msk_np = batch["mask_cems"].squeeze(1).cpu().numpy()
         has_ref = batch["has_reference"].cpu().numpy().reshape(-1)
         series_ids = batch["meta"]["series_id"]
+        horizon_values = h_days.view(-1).cpu().numpy()
+        scar_values = x_scar.detach().cpu().numpy()
+        scar_states = batch["meta"].get("scar_state")
 
         for i, sid in enumerate(series_ids):
+            band = horizon_band(float(horizon_values[i]))
+            if scar_states is not None:
+                is_cold_start = str(scar_states[i]) == "cold_start"
+            else:
+                is_cold_start = bool(np.all(scar_values[i] == 0))
+            if is_cold_start:
+                cold_sample_count += 1
+                cold_series.add(str(sid))
+
             for th in EVAL_THRESHOLDS:
                 m = compute_metrics_numpy(probs[i], tgt_np[i], msk_np[i], threshold=th)
                 series_metrics[sid][th].append(m)
+                horizon_metrics[band][th]["assembly"][sid].append(m)
+                if is_cold_start:
+                    cold_metrics[th]["assembly"][sid].append(m)
                 if has_ref[i] > 0:
                     mr = compute_metrics_numpy(
                         probs[i], ref_tgt_np[i], ref_msk_np[i], threshold=th
                     )
                     series_metrics_ref[sid][th].append(mr)
+                    horizon_metrics[band][th]["reference"][sid].append(mr)
+                    if is_cold_start:
+                        cold_metrics[th]["reference"][sid].append(mr)
 
     # Agregado por serie para cada umbral
     per_threshold = {
@@ -127,6 +202,54 @@ def evaluate_fold(
         ref_at_default = {}
         ref_at_best = {}
         ref_best_th = float("nan")
+
+    horizon_per_threshold: dict[str, dict[float, dict[str, object]]] = {}
+    for band, threshold_groups in horizon_metrics.items():
+        horizon_per_threshold[band] = {}
+        for th, target_groups in threshold_groups.items():
+            assembly = compact_series_metrics(
+                aggregate_series_metrics(target_groups.get("assembly", {}))
+            )
+            reference = (
+                compact_series_metrics(
+                    aggregate_series_metrics(target_groups.get("reference", {}))
+                )
+                if target_groups.get("reference")
+                else None
+            )
+            horizon_per_threshold[band][th] = {
+                "assembly": assembly,
+                "reference": reference,
+            }
+
+    cold_assembly = (
+        compact_series_metrics(aggregate_series_metrics(cold_metrics[threshold]["assembly"]))
+        if cold_metrics[threshold]["assembly"]
+        else None
+    )
+    cold_reference = (
+        compact_series_metrics(aggregate_series_metrics(cold_metrics[threshold]["reference"]))
+        if cold_metrics[threshold]["reference"]
+        else None
+    )
+    cold_start = {
+        "represented": bool(cold_sample_count),
+        "n_samples_total": cold_sample_count,
+        "n_series_total": len(cold_series),
+        "assembly": cold_assembly,
+        "reference": cold_reference,
+        "warning": (
+            None
+            if cold_sample_count
+            else "El arranque en frío no está representado en el dataset evaluado."
+        ),
+    }
+
+    dataset = getattr(val_loader, "dataset", None)
+    if dataset is None:
+        evaluated_set = {}
+    else:
+        evaluated_set = describe_evaluated_set(dataset)
 
     return {
         "val_loss": total_loss / max(1, n_batches),
@@ -176,6 +299,13 @@ def evaluate_fold(
             }
             for th in EVAL_THRESHOLDS
         } if ref_available else {},
+        "evaluated_set": evaluated_set,
+        "horizon_per_threshold": horizon_per_threshold,
+        "horizon_strata": {
+            band: values.get(threshold)
+            for band, values in horizon_per_threshold.items()
+        },
+        "cold_start": cold_start,
     }
 
 
@@ -233,6 +363,13 @@ def evaluate_checkpoint_on_test(
             "n_samples_evaluated": ref_metrics["n_samples_evaluated"],
             "n_samples_total": ref_metrics["n_samples_total"],
         },
+        "evaluated_set": res["evaluated_set"],
+        "horizon_strata": {
+            band: values[threshold]
+            for band, values in res["horizon_per_threshold"].items()
+            if threshold in values
+        },
+        "cold_start": res["cold_start"],
     }
 
 
@@ -307,12 +444,16 @@ def train_fold(
     device: str,
 ) -> dict[str, float]:
     """Entrena y evalúa un fold específico de validación cruzada."""
+    set_reproducibility_seed(args.seed + fold)
+    index_payload = json.loads(Path(args.index).read_text(encoding="utf-8"))
+
     train_loader, val_loader = get_cv_dataloaders(
         val_fold=fold,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         index_path=args.index,
         pin_memory=args.pin_memory,
+        seed=args.seed + fold,
     )
 
     model = BurnScarPropagationModel(
@@ -384,10 +525,18 @@ def train_fold(
         if score > best_score:
             best_score = score
             best_metrics = dict(val_res)
+            best_metrics["n_train_samples"] = len(train_loader.dataset)
+            best_metrics["n_val_samples"] = len(val_loader.dataset)
             checkpoint_path = tracker.save_checkpoint(
                 {
                     "fold": fold,
                     "epoch": epoch,
+                    "seed": args.seed + fold,
+                    "dataset_index_sha256": file_sha256(args.index),
+                    "dataset_content_sha256": index_payload.get(
+                        "dataset_content_sha256"
+                    ),
+                    "weights_sha256": state_dict_sha256(model.state_dict()),
                     "model_state_dict": model.state_dict(),
                     "model_config": model_config,
                     "metrics": best_metrics,
@@ -449,6 +598,15 @@ def evaluate_only(args: argparse.Namespace) -> int:
     print(f"Umbral operativo: {tau:.2f}")
     print("=" * 72)
 
+    status = historical_status(ckpt_dir)
+    if status and status.get("incompatible_with_canonical_index"):
+        print("⚠ AVISO: este run es histórico y NO compatible con el índice canónico.")
+        print(f"  Run canónico: {status.get('canonical_run')}.")
+        for reason in status.get("reasons", []):
+            print(f"  - {reason}")
+        print("  Sus métricas no se publican como resultado actual.")
+        print("=" * 72)
+
     test_metrics: list[dict[str, dict[str, float] | None]] = []
     for path in paths:
         m = evaluate_checkpoint_on_test(
@@ -494,6 +652,99 @@ def evaluate_only(args: argparse.Namespace) -> int:
     return 0
 
 
+def _aggregate_horizon_strata(
+    test_metrics: list[dict],
+    label: str,
+) -> dict[str, dict[str, float | int | None]]:
+    """Promedia los estratos de horizonte de los checkpoints evaluados."""
+    bands = sorted({
+        band
+        for metrics in test_metrics
+        for band in metrics.get("horizon_strata", {})
+    })
+    output: dict[str, dict[str, float | int | None]] = {}
+    for band in bands:
+        summaries = [
+            metrics.get("horizon_strata", {}).get(band, {}).get(label)
+            for metrics in test_metrics
+        ]
+        summaries = [summary for summary in summaries if summary is not None]
+        if not summaries:
+            output[band] = None
+            continue
+        output[band] = {
+            "f1": float(np.mean([summary["f1"] for summary in summaries])),
+            "iou": float(np.mean([summary["iou"] for summary in summaries])),
+            "precision": float(np.mean([summary["precision"] for summary in summaries])),
+            "recall": float(np.mean([summary["recall"] for summary in summaries])),
+            "n_series_evaluated": int(
+                np.mean([summary["n_series_evaluated"] for summary in summaries])
+            ),
+            "n_samples_evaluated": int(
+                np.mean([summary["n_samples_evaluated"] for summary in summaries])
+            ),
+            "n_samples_total": int(
+                np.mean([summary["n_samples_total"] for summary in summaries])
+            ),
+        }
+    return output
+
+
+def _aggregate_cold_start(test_metrics: list[dict]) -> dict[str, object]:
+    """Resume el estrato de arranque en frío sin inventar métricas."""
+    if not test_metrics:
+        return {"represented": False, "n_samples_total": 0, "n_series_total": 0}
+    represented = all(metrics.get("cold_start", {}).get("represented", False) for metrics in test_metrics)
+    return {
+        "represented": represented,
+        "n_samples_total": int(
+            np.mean([metrics.get("cold_start", {}).get("n_samples_total", 0) for metrics in test_metrics])
+        ),
+        "n_series_total": int(
+            np.mean([metrics.get("cold_start", {}).get("n_series_total", 0) for metrics in test_metrics])
+        ),
+        "warning": (
+            None
+            if represented
+            else "El arranque en frío no está representado en el conjunto de test."
+        ),
+    }
+
+
+def _collect_checkpoint_provenance(
+    checkpoint_paths: list[Path],
+    folds: list[int],
+) -> list[dict[str, object]]:
+    """
+    Procedencia de cada checkpoint del run.
+
+    Registra la huella del fichero, la huella de los pesos, la época, la
+    semilla y el hash del índice con el que se entrenó, de modo que el
+    manifiesto permita comprobar que los artefactos publicados corresponden al
+    dataset y a la ejecución canónicos.
+    """
+    provenance: list[dict[str, object]] = []
+    for path, fold in zip(checkpoint_paths, folds):
+        entry: dict[str, object] = {
+            "fold": int(fold),
+            "path": str(path),
+            "file_sha256": file_sha256(path),
+        }
+        try:
+            checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+        except Exception:  # pragma: no cover - solo informative
+            provenance.append(entry)
+            continue
+        entry.update({
+            "epoch": checkpoint.get("epoch"),
+            "seed": checkpoint.get("seed"),
+            "weights_sha256": checkpoint.get("weights_sha256"),
+            "dataset_index_sha256": checkpoint.get("dataset_index_sha256"),
+        })
+        provenance.append(entry)
+    return provenance
+
+
 def _pct(value: float) -> str:
     """Porcentaje legible, o 'n/d' si la métrica no es informativa."""
     return "n/d" if np.isnan(value) else f"{value * 100:.2f}%"
@@ -521,6 +772,7 @@ def main() -> int:
     parser.add_argument("--hidden-ch", type=int, default=32)
     parser.add_argument("--scar-corruption", type=float, default=0.15)
     parser.add_argument("--tag", default="propagation_convlstm_segformer")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument(
         "--eval-only",
@@ -532,6 +784,8 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    index_payload = json.loads(Path(args.index).read_text(encoding="utf-8"))
+    set_reproducibility_seed(args.seed)
 
     if args.eval_only:
         return evaluate_only(args)
@@ -544,6 +798,7 @@ def main() -> int:
     t0 = time.time()
     fold_results: list[dict[str, float]] = []
     checkpoint_paths: list[Path] = []
+    checkpoint_folds: list[int] = []
 
     with ExperimentTracker(args.tag) as tracker:
         print(f"TensorBoard run: {tracker.run_dir}")
@@ -555,6 +810,7 @@ def main() -> int:
             fold_results.append(res)
             if ckpt_path is not None:
                 checkpoint_paths.append(ckpt_path)
+                checkpoint_folds.append(fold)
 
         mean_f1 = _nanmean([r["f1_event"] for r in fold_results])
         std_f1 = float(np.std([r["f1_event"] for r in fold_results]))
@@ -625,6 +881,9 @@ def main() -> int:
             "n_samples_total": int(
                 np.mean([m["assembly"]["n_samples_total"] for m in test_metrics])
             ) if test_metrics else 0,
+            "evaluated_set": test_metrics[0]["evaluated_set"] if test_metrics else {},
+            "horizon_strata": _aggregate_horizon_strata(test_metrics, "assembly"),
+            "cold_start": _aggregate_cold_start(test_metrics),
         }
         has_ref = any(m.get("reference") is not None for m in test_metrics)
         ref_summary = (
@@ -654,6 +913,7 @@ def main() -> int:
                         if m.get("reference") is not None
                     ])
                 ),
+                "horizon_strata": _aggregate_horizon_strata(test_metrics, "reference"),
             }
             if has_ref else None
         )
@@ -675,6 +935,8 @@ def main() -> int:
             "operational_threshold": tau,
             "per_fold_best_threshold": opt_thresholds,
             "threshold_spread": spread,
+            **build_dataset_provenance(args.index, index_payload, args.seed, args.tag),
+            "checkpoints": _collect_checkpoint_provenance(checkpoint_paths, checkpoint_folds),
             "test_fold": TEST_FOLD,
             "test_metrics": test_summary,
             "test_metrics_reference_target": ref_summary,
@@ -725,6 +987,17 @@ def main() -> int:
             f"    Muestras evaluables: {test_summary['n_samples_evaluated']}"
             f"/{test_summary['n_samples_total']}"
         )
+        print("    Por banda de horizonte (ensamblaje):")
+        for band, strata in test_summary["horizon_strata"].items():
+            if strata is None:
+                print(f"      {band}: n/d")
+            else:
+                print(
+                    f"      {band}: F1 {_pct(strata['f1'])}, "
+                    f"{strata['n_samples_evaluated']}/{strata['n_samples_total']} evaluables"
+                )
+        if not test_summary["cold_start"]["represented"]:
+            print("    Aviso: el arranque en frío no está representado en el test.")
         if ref_summary is not None:
             print("  Contra el target de referencia (crecimiento real entre rondas CEMS):")
             print(f"    F1:        {ref_summary['f1'] * 100:.2f}%")

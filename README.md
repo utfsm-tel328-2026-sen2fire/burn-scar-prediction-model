@@ -1,21 +1,21 @@
 # burn-scar-prediction-model
 
-Predicción multi-horizonte (a 1, 3 y 7 días) del crecimiento de cicatrices de incendio
+Predicción multi-horizonte (continua) del crecimiento de cicatrices de incendio
 forestal en el Mediterráneo, construida íntegramente con datos satelitales y climáticos
 abiertos.
 
 ## Qué es este proyecto
 
 El objetivo es un modelo que, observando la situación actual de un incendio (imágenes de
-satélite + clima + terreno), prediga **qué zonas se quemarán en los próximos días** y con
-qué probabilidad.
+satélite, terreno y cobertura del suelo), prediga **qué zonas se quemarán en los próximos
+días** y con qué probabilidad.
 
-- **Datos que usa**: imágenes de Sentinel-3 (cada ~2 días), Sentinel-2 (una foto anterior
-  al incendio), Sentinel-1 (radar, a partir de la v2), el viento y la temperatura **tanto
-  observados como previstos**, los focos de calor activos, el relieve y el tipo de
-  vegetación. Todo abierto y gratuito.
-- **Lo que devuelve**: un mapa de probabilidad de quema, píxel a píxel, para un horizonte
-  que se pide explícitamente (1, 3 o 7 días).
+- **Datos que usa el modelo actual**: imágenes de Sentinel-3 OLCI (cada ~2 días), Copernicus
+  DEM, cobertura del suelo ESA WorldCover, la cicatriz actual estimada por TMB-S3 y el
+  horizonte continuo de predicción. Sentinel-1, Sentinel-2 y meteorología no forman parte
+  del modelo entrenado.
+- **Lo que devuelve**: un mapa de probabilidad de **nueva quema**, píxel a píxel, para un
+  horizonte continuo que se pide explícitamente.
 - **Con qué se mide**: con las delineaciones del Copernicus Emergency Management Service
   (CEMS), el único dato público que dibuja el crecimiento de un incendio mediante
   analistas mirando imágenes **distintas** de las del modelo.
@@ -47,11 +47,30 @@ El detalle completo, con las alternativas descartadas y el porqué, está en
 
 ## Estado
 
-**Diseño cerrado, recopilación desbloqueada.** El dataset está diseñado y medido, la
-auditoría de splits (PASO 0) está hecha y las siete decisiones de recopilación
-(**BL1–BL7**, [`docs/decisiones.md`](docs/decisiones.md) §1.3) han sido cerradas. El siguiente
-paso es implementar el pipeline de ingesta y metadatos para las 46 series limpias de CEMS, y en
-paralelo cerrar la definición formal de **B2 (P2)** para el criterio de evaluación.
+**Modelo entrenado y dataset canónico regenerado.** El dataset vigente contiene **295
+muestras únicas en 40 series**, con horizontes continuos, inventario de calidad y capas
+estáticas validadas. El run canónico es `prop_v4_integrity` (semilla 42), con umbral
+operativo congelado en 0,10.
+
+Conjunto de test (fold -1, 25 muestras, 7 series), modelo y baselines al mismo umbral y sobre
+el mismo subconjunto:
+
+| Modelo | F1 (ensamblaje) | F1 (referencia, propagación real) |
+|---|---:|---:|
+| B1 dilatación radial | 15,94% | 7,30% |
+| Trivial "todo quemado" | 16,29% | 8,42% |
+| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **14,80%** |
+
+El número publicable de propagación es el de la **referencia** (14,80%): la etiqueta de
+ensamblaje incluye quemado que TMB-S3 no detectó. El arranque en frío **no está
+representado** y no se publica un desempeño para él; las bandas de horizonte se reportan solo
+como diagnóstico y no filtran nada. La tabla completa, con IoU, precisión, recall, soporte
+por banda y recuentos evaluables, está en
+[`docs/operacion.md`](docs/operacion.md) §9.
+
+El run anterior `prop_v4` queda como **histórico y no publicable**: su índice tenía entradas
+duplicadas y una serie de test con WorldCover vacío, así que sus métricas no son
+comparables con las del run canónico.
 
 ## Documentación
 
@@ -70,24 +89,16 @@ paralelo cerrar la definición formal de **B2 (P2)** para el criterio de evaluac
 
 ## Próximos pasos
 
-1. **Decidir las 7 decisiones que bloquean la descarga**
-   ([`docs/decisiones.md`](docs/decisiones.md) §1.3): ventana temporal, checkpoint de
-   TMB-S3, alcance del pool de preentrenamiento, definición de "evento" en MCD64A1, si
-   entra Sentinel-1, qué series no mediterráneas se quedan y la máscara de nubes. Son
-   baratas de decidir y caras de corregir **después** de descargar.
-2. Construir la ingesta: CEMS vía API → cubos GEE → etiquetado cuantificado, aplicando las
-   reglas D1-D20 ([`docs/dataset.md`](docs/dataset.md) §7), en tiles de 64×64 px a 300 m.
-3. Implementar los modelos de referencia B0/B1/B2 con el protocolo de evaluación ya fijado.
-4. **Preentrenar con MCD64A1** (M-A) y luego **ajustar con las 46 series de CEMS** (M-B),
-   en 5 folds agrupados. La cicatriz de entrada la produce TMB-S3 en todos los pasos.
-5. Comparar M-A y M-B contra los modelos de referencia y estratificar los resultados por
-   sensor.
+1. Ampliar el conjunto y recuperar `EMSR785_AOI01` con una fuente estática que no devuelva
+   WorldCover vacío.
+2. Obtener observaciones genuinas de arranque en frío o mantenerlo explícitamente fuera del
+   alcance de desempeño.
+3. Implementar B2 (advección por viento) y comparar contra el mismo conjunto y umbral.
+4. Evaluar la calibración de las salidas y la estabilidad del umbral por fold y horizonte.
+5. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
 
-> El script de auditoría ya está hecho y su resultado está en
-> [`docs/decisiones.md`](docs/decisiones.md) §3:
-> ```
-> python3 scripts/audit_tmb_splits.py
-> ```
+La auditoría reproducible del dataset y la procedencia de los runs están en
+`scripts/audit_dataset_integrity.py` y en `operational_threshold.json`, respectivamente.
 
 ## Estructura
 
@@ -95,8 +106,8 @@ paralelo cerrar la definición formal de **B2 (P2)** para el criterio de evaluac
 .
 ├── README.md
 ├── docs/          # la documentación (ver docs/README.md)
-├── src/burn_scar/ # utilidades de tracking (el modelo todavía no)
-├── scripts/       # auditoría de splits, entorno, launcher de TensorBoard
+├── src/burn_scar/ # modelo, dataset, métricas y utilidades compartidas
+├── scripts/       # ingesta, ensamblado, entrenamiento, evaluación y auditoría
 ├── tests/
 ├── openspec/      # flujo de trabajo OpenSpec (specs de entorno y tracking)
 ├── pyproject.toml

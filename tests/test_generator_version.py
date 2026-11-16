@@ -63,10 +63,13 @@ def test_la_version_del_generador_tiene_longitud_estable():
 def test_los_ficheros_del_generador_son_los_esperados():
     """Si cambia el conjunto de ficheros que determina el dataset, se actualiza."""
     assert generator_source_names() == [
+        "scripts/build_cems_manifest.py",
+        "scripts/download_gee_olci.py",
         "scripts/build_pytorch_dataset.py",
+        "src/burn_scar/quality.py",
         "src/burn_scar/dataset.py",
     ]
-    assert len(GENERATOR_SOURCES) == 2
+    assert len(GENERATOR_SOURCES) == 5
 
 
 def _escribir_indice(tmp_path, extra: dict) -> Path:

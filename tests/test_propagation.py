@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import math
 from pathlib import Path
 
 import pytest
@@ -108,6 +110,119 @@ def _fake_batch(*, with_burn: bool, with_reference: bool) -> dict:
         "has_reference": torch.ones(B, 1) if with_reference else torch.zeros(B, 1),
         "meta": {"series_id": ["serie_a"], "sample_id": ["m1"], "fold": [0]},
     }
+
+
+def _evaluation_batch_with_horizons() -> dict:
+    horizons = torch.tensor([[0.5], [2.0], [2.0]])
+    target = torch.zeros((3, 1, 64, 64))
+    target[0, 0, 10:20, 10:20] = 1.0
+    mask = torch.ones((3, 1, 64, 64), dtype=torch.uint8)
+    scar = torch.zeros((3, 1, 64, 64))
+    scar[0, 0, 10:20, 10:20] = 1.0
+    return {
+        "x_olci": torch.zeros((3, 7, 5, 64, 64)),
+        "x_dem": torch.zeros((3, 1, 64, 64)),
+        "x_worldcover": torch.zeros((3, 1, 64, 64)),
+        "x_scar": scar,
+        "horizon_days": horizons,
+        "target": target,
+        "mask": mask,
+        "target_cems": target.clone(),
+        "mask_cems": mask.clone(),
+        "has_reference": torch.ones((3, 1)),
+        "meta": {
+            "sample_id": ["m0", "m1", "m2"],
+            "series_id": ["a", "b", "c"],
+            "fold": [0, 0, 0],
+            "scar_state": ["detected", "cold_start", "detected"],
+        },
+    }
+
+
+def test_la_procedencia_del_dataset_incluye_hash_y_campos_requeridos(tmp_path):
+    module = _load_train_script()
+    index_path = tmp_path / "index.json"
+    index_path.write_text(json.dumps({
+        "generator_version": "generator",
+        "dataset_index_schema_version": 2,
+        "target_mode": "scar",
+        "inventory": {
+            "total_unique_samples": 3,
+            "horizon_distribution": {"bands": {"0-1d": 3}},
+            "scar_coverage": {"cold_start_samples": 0},
+        },
+    }), encoding="utf-8")
+
+    provenance = module.build_dataset_provenance(
+        index_path,
+        json.loads(index_path.read_text(encoding="utf-8")),
+        seed=42,
+        tag="run",
+    )
+
+    assert provenance["dataset_index_sha256"]
+    assert provenance["dataset_generator_version"] == "generator"
+    assert provenance["dataset_schema_version"] == 2
+    assert provenance["dataset_target_mode"] == "scar"
+    assert provenance["seed"] == 42
+    assert provenance["run_tag"] == "run"
+    assert provenance["dataset_counts"]["total_unique_samples"] == 3
+    assert "horizon_support" in provenance
+    assert "cold_start_coverage" in provenance
+
+
+def test_la_semilla_fija_el_modelo_y_el_generador_de_aleatoriedad() -> None:
+    module = _load_train_script()
+    from burn_scar.quality import state_dict_sha256
+
+    module.set_reproducibility_seed(123)
+    first_model = BurnScarPropagationModel(
+        olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0
+    )
+    first_random = torch.rand(8)
+
+    module.set_reproducibility_seed(123)
+    second_model = BurnScarPropagationModel(
+        olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0
+    )
+    second_random = torch.rand(8)
+
+    assert torch.equal(first_random, second_random)
+    assert state_dict_sha256(first_model.state_dict()) == state_dict_sha256(
+        second_model.state_dict()
+    )
+
+
+def test_evaluate_fold_estratifica_horizontes_sin_filtrar_el_global() -> None:
+    module = _load_train_script()
+    model = BurnScarPropagationModel(
+        olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0
+    )
+
+    result = module.evaluate_fold(model, [_evaluation_batch_with_horizons()], device="cpu")
+
+    assert set(result["horizon_strata"]) == {"0-1d", "1-3d"}
+    assert result["n_samples"] == 3
+    assert result["horizon_strata"]["1-3d"]["assembly"]["n_samples_total"] == 2
+    assert result["horizon_strata"]["1-3d"]["assembly"]["n_samples_evaluated"] == 0
+    assert math.isnan(result["horizon_strata"]["1-3d"]["assembly"]["f1"])
+    assert result["cold_start"]["represented"] is True
+    assert result["cold_start"]["n_samples_total"] == 1
+
+
+def test_evaluate_fold_declara_arranque_en_frio_no_representado() -> None:
+    module = _load_train_script()
+    model = BurnScarPropagationModel(
+        olci_channels=5, hidden_ch=8, scar_corruption_prob=0.0
+    )
+    batch = _evaluation_batch_with_horizons()
+    batch["x_scar"][:] = 1.0
+    batch["meta"]["scar_state"] = ["detected", "detected", "detected"]
+
+    result = module.evaluate_fold(model, [batch], device="cpu")
+
+    assert result["cold_start"]["represented"] is False
+    assert "no está representado" in result["cold_start"]["warning"]
 
 
 def test_evaluate_fold_informa_de_muestras_evaluables() -> None:

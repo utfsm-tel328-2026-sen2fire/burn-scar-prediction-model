@@ -57,11 +57,12 @@ El dataset tiene **tres ejes temporales** y una regla que los une:
 > Es la formulación que **reproduce la operación** (se actualiza cada ~2 días) y hace que el
 > arranque en frío aparezca solo.
 >
-> ✓ **El número de muestras con esta regla ha sido medido (P7 resuelto, 2026-11-08):**
-> Cruzando las 46 series limpias de CEMS con el catálogo CDSE OData de pasadas reales de
-> Sentinel-3 OLCI, resultan **414 muestras $(f, h)$** sobre **44 series** con $\ge 2$
-> rondas DEL con fecha válida (336 muestras en 36 series genuinamente mediterráneas y 78 muestras
-> en 8 series de ultramar/atlántico). Horizonte $h$: mediana 0,92 días (~22 h), p75 1,18 d.
+> ✓ **Censo canónico (2026-11-16):** el manifiesto contiene **411 muestras únicas**
+> sobre 44 series candidatas después de colapsar tres productos OLCI duplicados. El dataset
+> ensamblado contiene **295 muestras únicas en 40 series**: 29 (fold 0), 15 (fold 1), 108
+> (fold 2), 95 (fold 3), 23 (fold 4) y 25 fuera de dominio (fold -1). Horizonte $h$:
+> mediana 0,897 días, p75 1,042 y máximo 7,024. El inventario completo, incluidas las
+> exclusiones y la cobertura de arranque en frío, vive en `dataset_index.json`.
 > El detalle estructurado está en `data/cems_manifest_46.json`.
 
 ```
@@ -331,7 +332,7 @@ especificación que se implementa y la que se revisa al auditar una etiqueta.
 | **D3** | **Máscara de validez por ronda**: `255` = "nadie miró aquí". El target se evalúa en `valido(r+1) ∩ scar_ok(f)` | Fuera de la máscara no hay dato, no hay "no quemado" (R4, R10). `valido(r)` no interviene: con D9 el perímetro de la ronda anterior ya no entra en el target |
 | **D4** | **Cambio de sensor**: la transición se conserva, pero se guarda el sensor de cada ronda y la evaluación se estratifica | Parte del "crecimiento" entre rondas es diferencia de detección, no propagación (R14) |
 | **D5** | **FEP excluido** de la serie de etiquetas | Es una primera estimación de baja resolución; meterla mete un borde grueso |
-| **D6** | **Arranque en frío incluido**: los frames en los que TMB-S3 aún no detecta nada (`scar` todo a cero) entran en el entrenamiento | El primer ciclo de un incendio real no tiene cicatriz (R16) |
+| **D6** | **El arranque en frío se mide y se declara, sin fabricarlo**: una muestra con `scar` completamente vacío solo existe si TMB-S3 no detecta nada en una adquisición genuina | El dataset canónico vigente tiene **0** muestras de este tipo; se declara `cold_start_represented: false` y no se publica un desempeño para ese escenario (decisiones.md §1.5, A9) |
 | **D7** | **Sensor y `observed_time` de cada ronda**, siempre, en metadatos y en evaluación | Permite estratificar (R14) y auditar cualquier muestra |
 | **D8** | **Split por cluster geográfico**, nunca aleatorio | Fuga espacial (R5) |
 | **D9** | **El target se mide desde *f*, no desde la ronda anterior** | `polígono(r+1) − scar_TMB3(f)`, no `polígono(r+1) − polígono(r)`. Medir desde la ronda cuenta quemado ya visible (§2) |
@@ -346,11 +347,30 @@ especificación que se implementa y la que se revisa al auditar una etiqueta.
 | **D18** | **La secuencia de entrada incluye siempre un frame pre-incendio** | TMB-S3 demuestra que el modelado temporal solo mejora con una adquisición pre-fire (investigacion.md §2, hallazgo 1). Sin ella, el modelo solo ve "el fuego sigue donde iba" |
 | **D19** | **Una adquisición se descarta cuando más del 20 % de sus píxeles carecen de dato válido en todas sus bandas** (o cuando no tiene ninguna señal válida: adquisición nocturna). El porcentaje se mide sobre **píxeles**, no sobre celdas de banda | La medida por celda ataba el criterio al número de bandas (5) y trataba igual un píxel con 4 bandas válidas que uno completamente muerto. La regla de D3 ("nadie miró aquí") es del píxel, no de cada banda (decisiones.md §1.5, A4) |
 | **D20** | **La ventana temporal termina en el frame `f`** y la muestra se descarta si no hay adquisición utilizable de `f` | La cicatriz de entrada y el target miden quemado posterior a `f`; si la ventana acaba en otra adquisición, ambos quedan anclados a un instante distinto del que define el horizonte `h`. `f` se empareja con su fichero por cercanía temporal (tolerancia de 2 min), porque el manifiesto trunca a segundos y el fichero se nombra con el tiempo redondeado (decisiones.md §1.5, A2 y A3) |
+| **D21** | **Una adquisición OLCI tiene identidad canónica `(satélite, segundo UTC)`** | Productos del catálogo que representen la misma adquisición se colapsan de forma determinista, se conservan sus identificadores para auditoría y nunca se sobrescribe un raster ni se duplica una muestra |
+| **D22** | **DEM y WorldCover se validan antes de ensamblar** | WorldCover solo admite las clases ESA WorldCover v200 `{10,20,30,40,50,60,70,80,90,95,100}`; una capa ausente, vacía, con valores no finitos o con clases desconocidas excluye la serie con un motivo explícito |
+
+El índice canónico usa la versión de esquema 2. Su bloque `inventory` reconcilia entradas,
+muestras únicas, ficheros únicos, series y folds; registra la huella del manifiesto de
+entrada, las series excluidas y sus motivos, la cobertura de cicatriz y la distribución de
+horizontes. Los horizontes se conservan como valores continuos y se dividen únicamente en
+estratos de diagnóstico `(0,1]`, `(1,3]`, `(3,7]`, `(7,14]` y `(14,+inf)`; ninguna banda
+descarta una muestra ni filtra las métricas globales. El dataset y la evaluación **no
+imponen ningún horizonte máximo**: el dominio del modelo es `h > 0` y el rango observado se
+publica como soporte empírico, mientras que cualquier política operativa futura de máximo o
+de advertencia de extrapolación queda fuera del alcance de esta documentación.
+
+La procedencia de cada artefacto es obligatoria: el índice registra la versión del
+generador, la huella SHA-256 del manifiesto de entrada y una huella de contenido estable
+(`dataset_content_sha256`) que no depende de su cabecera temporal, de modo que dos
+regeneraciones del mismo dataset sean comparables.
 
 ## 8. Arquitectura de tres fuentes
 
 El proyecto usa **tres fuentes de datos, cada una en un rol distinto**. La regla que las
-gobierna: **cambia la supervisión, nunca las entradas**.
+gobierna: **cambia la supervisión, nunca las entradas**. La implementación actual de
+propagación consume OLCI, DEM, WorldCover, la cicatriz de TMB-S3 y el horizonte; meteorología
+y radar siguen fuera del modelo entrenado.
 
 ```
   ┌──────────────────────────────────────────────────────────────────┐
@@ -371,11 +391,12 @@ gobierna: **cambia la supervisión, nunca las entradas**.
 |---|---|---|---|
 | Frames OLCI | ✓ | ✓ | ✓ |
 | **Cicatriz (TMB-S3)** | ✓ | ✓ | ✓ |
-| Meteo, DEM, WorldCover | ✓ | ✓ | ✓ |
+| DEM, WorldCover | ✓ | ✓ | ✓ |
+| Meteo | — (fuera del modelo actual) | — | — |
 | Horizonte *h* | rejilla `{1,2,3,5,7,10,14}` d | el real de CEMS | el que se consulte |
 | **Target** | `BurnDate ∈ (f, f+h]` (MCD64A1) | `polígono(r+1) − scar_TMB3(f)` (CEMS) | — |
 | **Resolución del target** | 500 m → 300 m (*nearest*) | 300 m fraccional | — |
-| **Eventos** | MCD64A1, Mediterráneo, **excluidos los 96 de CEMS** (D15) | 46 series limpias (D13) | — |
+| **Eventos** | MCD64A1, Mediterráneo, **excluidos los 96 de CEMS** (D15) | 40 series ensambladas (D13) | — |
 
 **Por qué esto resuelve el train/test shift.** El R11 original era: "se entrena con
 delineaciones de CEMS pero en operación no hay CEMS". Con TMB-S3 como generador de cicatriz,
@@ -458,6 +479,10 @@ Fijado de antemano, para que no se pueda ajustar después:
 | **Estratificación obligatoria** | Los resultados se reportan **separados** entre transiciones con el mismo sensor y transiciones que lo cambian (decisiones.md §2 R14). La métrica principal se da en el subconjunto "limpio", con el número completo como segundo resultado |
 | **Estrato TMB-S3** | Las 12 series que están en el `test` de TMB-S3 se reportan **aparte**: sus pesos no las entrenaron, así que miden si TMB-S3 generaliza de verdad (decisiones.md §3) |
 | **Comparación** | Todos los baselines (B0, B1, B2) se evalúan **con el mismo protocolo y los mismos folds** que el modelo, y se reportan los dos modelos (M-A sin ajuste, M-B con ajuste) |
+| **Denominadores** | La evaluación informa por separado de **entradas, muestras únicas, ficheros únicos, series y muestras evaluables**, y usa un único descriptivo (`evaluated_set`) para el modelo y para los baselines. Un índice con `sample_id` o rutas repetidos se rechaza antes de calcular métricas |
+| **Bandas de horizonte** | Las métricas se reportan también por banda `(0,1]`, `(1,3]`, `(3,7]`, `(7,14]` y `(14,+inf)`, **solo como diagnóstico**. Las métricas globales se calculan sobre **todas** las muestras únicas: ninguna banda filtra el entrenamiento ni la evaluación, y no hay horizonte máximo |
+| **Arranque en frío** | El estrato de arranque en frío se reporta **con su estado**: si el conjunto no contiene ninguna muestra con `x_scar` vacío, se declara "no representado" y **no se publica un desempeño** para ese escenario |
+| **Procedencia** | Cada artefacto registra la versión del generador, la huella SHA-256 del índice, la huella de contenido estable, la semilla, el esquema y el soporte de horizontes |
 
 > **Por qué el promedio por evento y no por píxel.** Agregar por píxel hace que un solo AOI
 > enorme (EMSR837 tiene 111.489 píxeles, 27 veces la mediana) domine la métrica. Con 46

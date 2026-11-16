@@ -20,7 +20,7 @@ El flujo implementado transforma datos satelitales en bruto (imágenes ópticas 
                                                                  │
                                                                  ▼
                                                   BurnScarDataset (PyTorch)
-                                                  (344 muestras en 5 Folds)
+                                                  (295 muestras en 5 Folds)
 ```
 
 ---
@@ -51,9 +51,9 @@ Ejecutada con [`scripts/audit_tmb_splits.py`](../scripts/audit_tmb_splits.py):
 
 ### 3.2 Censo Real de Muestras (P7 Resuelto)
 Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) se cruzaron los intervalos de observación entre rondas CEMS con las pasadas efectivas de Sentinel-3 OLCI:
-- Se identificaron **414 muestras $(f, h)$** potenciales sobre 44 series.
-- Con el inventario local de adquisiciones se ensamblan **344 muestras finales** (el dataset se regeneró el 2026-11-15 al anclar la ventana temporal en `f`; ver [`operacion.md`](operacion.md) §9).
-- Distribución de horizontes objetivos: **mediana $h = 0.92$ días (~22 h)**, $p_{25}=0.03\text{ d}$, $p_{75}=1.18\text{ d}$.
+- Se identificaron **411 muestras $(f, h)$** potenciales sobre 44 series, tras colapsar tres productos OLCI duplicados del catálogo CDSE.
+- Con el inventario local de adquisiciones se ensamblan **295 muestras finales** en 40 series (el dataset canónico se regeneró el 2026-11-16 con identidad de adquisición única, validación de capas estáticas e inventario de cobertura; ver [`operacion.md`](operacion.md) §9).
+- Distribución de horizontes objetivos: **mediana $h = 0.897$ días**, $p_{25}=0.027\text{ d}$, $p_{75}=1.042\text{ d}$.
 
 ### 3.3 Auditoría de Cambio de Sensor (R14 Medido)
 - **116 de 188 transiciones (61.7%) cambiaron de sensor** entre rondas consecutivas (ej. Legion 50 cm $\leftrightarrow$ Sentinel-2 10 m $\leftrightarrow$ SPOT-6/7 1.5 m).
@@ -115,8 +115,8 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
   `--target-mode cems` (diagnóstico: el target de propagación pasa a ser el crecimiento
   real; **las entradas del modelo son idénticas en ambos modos**, solo cambia la etiqueta).
   El modo se registra en `dataset_index.json`.
-* **Resultado:** 344 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` y `frame_key` para auditar la ventana temporal). El dataset se regeneró el 2026-11-15 al anclar la ventana en `f`; las 46 muestras descartadas y su motivo están desglosados en [`operacion.md`](operacion.md) §9.
-* **Verificación:** 308/344 muestras (89,5%) tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. Los invariantes de la ventana (terminar en `f` y estar ordenadas en el tiempo) se comprueban en `tests/test_dataset_invariants.py`, y la codificación canónica de las máscaras sobre el fichero almacenado, en `tests/test_generator_version.py`. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8). El índice registra además la versión del generador, y el cargador avisa si el dataset almacenado no corresponde al código vigente.
+* **Resultado:** 295 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` y `frame_key` para auditar la ventana temporal, además de su banda de horizonte, su estado de cicatriz y la versión de esquema del índice). El dataset canónico se regeneró el 2026-11-16; las exclusiones y sus motivos están desglosados en [`operacion.md`](operacion.md) §9.
+* **Verificación:** 256/270 muestras de validación tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. Los invariantes de la ventana (terminar en `f` y estar ordenadas en el tiempo) se comprueban en `tests/test_dataset_invariants.py`, y la codificación canónica de las máscaras sobre el fichero almacenado, en `tests/test_generator_version.py`. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8). El índice registra además la versión del generador, y el cargador avisa si el dataset almacenado no corresponde al código vigente.
 
 ---
 
