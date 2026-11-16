@@ -24,6 +24,18 @@ El sistema SHALL componer la ventana temporal de cada muestra con exactamente un
 - **WHEN** se ensambla una muestra de una serie con adquirido pre-incendio disponible
 - **THEN** el primer frame de la secuencia temporal es la adquisición pre-incendio más reciente y los seis restantes son post-incendios, terminando en el frame actual f
 
+#### Scenario: La adquisición de f se empareja por tiempo y no por marca truncada
+- **WHEN** la marca de tiempo de la adquisición de f en el manifiesto de origen y la del fichero de imagen descargado difieren en menos de un minuto
+- **THEN** esa adquisición se reconoce como el frame f y ocupa la última posición de la ventana temporal
+
+#### Scenario: Una muestra sin adquisición utilizable de f no se ensambla
+- **WHEN** no existe ninguna adquisición utilizable que corresponda al frame actual f
+- **THEN** el sistema no construye la muestra, la informa, y no la sustituye por una adquisición anterior
+
+#### Scenario: La ventana temporal está ordenada cronológicamente
+- **WHEN** se ensambla una muestra
+- **THEN** los siete frames de la ventana temporal están en orden temporal no decreciente
+
 #### Scenario: Relleno cuando no hay suficientes frames
 - **WHEN** la serie dispone de menos de siete adquisiciones utilizables
 - **THEN** el sistema completa la ventana repitiendo el frame más antiguo disponible y entrega igualmente siete frames
@@ -47,6 +59,14 @@ El sistema SHALL descartar, antes de componer la ventana temporal, toda adquisic
 - **WHEN** se genera el dataset completo
 - **THEN** ninguna de las ventanas temporales almacenadas contiene frames nocturnos ni frames con más del 20% de píxeles sin dato
 
+#### Scenario: El umbral se mide sobre píxeles y no sobre celdas de banda
+- **WHEN** una adquisición tiene píxeles parcialmente observados, con unas bandas válidas y otras sin dato
+- **THEN** esos píxeles cuentan como observados, porque el umbral del 20% se mide sobre los píxeles que no tienen ninguna banda con dato válido
+
+#### Scenario: Un frame con señal y muchos píxeles muertos se descarta
+- **WHEN** una adquisición supera el 20% de sus píxeles sin dato válido en ninguna banda, aunque conserve señal distinta de cero
+- **THEN** el sistema la descarta por ese criterio, con independencia de que tenga señal
+
 ### Requirement: Model inputs free of nodata sentinels
 El sistema SHALL NOT almacenar el valor centinela de píxel sin dato en el tensor de entrada OLCI, y SHALL sustituir cada celda de banda sin dato por la media de esa misma banda dentro del frame correspondiente, conservando las bandas válidas de los píxeles parcialmente observados.
 
@@ -68,6 +88,10 @@ En el modo de ensamblaje por defecto (`scar`), el sistema SHALL definir el targe
 #### Scenario: El target es cero cuando no hay crecimiento
 - **WHEN** en modo `scar` la cicatriz estimada en el frame actual cubre ya el polígono de la ronda objetivo
 - **THEN** el target de esa muestra es cero en todos sus píxeles, sin valores negativos
+
+#### Scenario: La cicatriz sustraída es la del frame actual
+- **WHEN** se calcula el target de propagación de una muestra
+- **THEN** la cicatriz que se resta al polígono de la ronda objetivo es la estimada en el frame actual f de esa muestra, y no la de una adquisición anterior
 
 ### Requirement: Sample loading adapted to the compute backend
 El sistema SHALL resolver la configuración del cargador de muestras de entrenamiento según el backend de GPU disponible, y SHALL NOT pagar un coste de carga de datos multiplicativo por el uso de procesos auxiliares cuando ese backend no lo tolera, de modo que el tiempo de una época de entrenamiento refleje el coste de cómputo del modelo.
@@ -104,7 +128,7 @@ El sistema SHALL almacenar, junto al target de propagación de cada muestra, un 
 - **THEN** el sistema conserva la muestra, deja su target de referencia sin definir y marca su validez común como no evaluable, en lugar de descartarla
 
 ### Requirement: Canonical encoding of the validity mask
-El sistema SHALL codificar la máscara de validez de cada muestra con `1` = píxel evaluable y `255` = píxel ignorado, tanto en la máscara del target de ensamblaje como en la validez común entre rondas, y SHALL NOT almacenar ningún otro valor en las máscaras.
+El sistema SHALL codificar la máscara de validez de cada muestra con `1` = píxel evaluable y `255` = píxel ignorado, tanto en la máscara del target de ensamblaje como en la validez común entre rondas, y SHALL NOT almacenar ningún otro valor en las máscaras del paquete almacenado. El cargador de muestras SHALL tolerar paquetes antiguos que empleen otros valores, normalizándolos a la codificación canónica al leerlos.
 
 #### Scenario: Las dos máscaras comparten la misma codificación
 - **WHEN** se inspecciona un paquete de muestra generado en cualquier modo de ensamblaje
@@ -113,3 +137,37 @@ El sistema SHALL codificar la máscara de validez de cada muestra con `1` = píx
 #### Scenario: La validez común marca como ignorados los píxeles no observados
 - **WHEN** se ensambla el dataset en modo de crecimiento de referencia y un píxel no fue observado en alguna de las dos rondas
 - **THEN** ese píxel queda marcado como ignorado (`255`) en la validez común, y no como evaluable
+
+#### Scenario: El paquete almacenado cumple la codificación sin pasar por el cargador
+- **WHEN** se inspecciona el fichero de una muestra almacenada, sin pasar por el cargador de muestras
+- **THEN** sus dos máscaras contienen únicamente los valores `1` y `255`, sin ningún valor heredado de codificaciones anteriores
+
+#### Scenario: El cargador normaliza los paquetes antiguos
+- **WHEN** se lee un paquete almacenado con un valor distinto de `1` en lugar de `255`
+- **THEN** el cargador lo entrega ya normalizado a `255`, de modo que ningún consumidor de la muestra recibe un valor no canónico
+
+### Requirement: Traceable dataset version
+El sistema SHALL registrar en el índice del dataset la versión del generador con la que se construyó el conjunto de muestras, junto al modo de target y la marca de tiempo, de modo que se pueda detectar que un dataset almacenado fue producido por un generador distinto del vigente.
+
+#### Scenario: El índice identifica la versión del generador
+- **WHEN** se genera el dataset
+- **THEN** el índice registra la versión del generador junto a la marca de tiempo y al modo de target
+
+#### Scenario: Un dataset desactualizado es detectable
+- **WHEN** se compara la versión del generador registrada en el índice de un dataset almacenado con la versión vigente
+- **THEN** la diferencia queda a la vista antes de usar ese dataset para entrenar o evaluar
+
+### Requirement: Complete acquisition inventory per series
+El sistema SHALL obtener todas las adquisiciones candidatas de cada serie dentro del rango temporal de interés, consultando la fuente de imágenes con la misma cobertura geográfica que el catálogo de referencia y sin truncar el resultado de la consulta por un límite de resultados, y SHALL informar de cualquier adquisición descartada por esos motivos.
+
+#### Scenario: La consulta usa la cobertura geográfica del catálogo de referencia
+- **WHEN** la colección de imágenes se consulta para una serie
+- **THEN** la consulta cubre la extensión del área de interés de la serie, y no un punto, de modo que toda adquisición que el catálogo de referencia lista para esa área intersecte el resultado de la consulta
+
+#### Scenario: Ninguna serie pierde adquisiciones por un límite de resultados
+- **WHEN** una serie tiene más adquisiciones candidatas que el límite de resultados de la consulta de imágenes
+- **THEN** todas ellas se descargan y quedan disponibles para el ensamblaje de muestras
+
+#### Scenario: El descarte por tope de consulta queda visible
+- **WHEN** la consulta de imágenes de una serie alcanza su límite de resultados
+- **THEN** el proceso informa de que el inventario de adquisiciones de esa serie puede estar incompleto
