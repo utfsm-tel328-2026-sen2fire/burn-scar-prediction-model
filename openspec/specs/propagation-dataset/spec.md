@@ -1,0 +1,240 @@
+# propagation-dataset Specification
+
+## Purpose
+
+Define los requisitos de construcción del dataset de propagación de cicatrices: generación de la cicatriz conocida a partir del checkpoint congelado de TMB-S3, composición de la ventana temporal multi-frame con adquisición pre-incendio, filtrado de adquisiciones no utilizables, tratamiento de los píxeles sin dato, semántica del target de nuevo quemado y carga de las muestras adaptada al backend de cómputo.
+
+## Requirements
+
+### Requirement: Known scar generated from the burned-class output of TMB-S3
+El sistema SHALL generar el canal de cicatriz conocida a partir del logit de la clase "quemado" del checkpoint TMB-S3 congelado, que corresponde al canal 0 del modelo, y SHALL NOT usar el canal 1 (cabeza de nubes, entrenada con peso nulo).
+
+#### Scenario: La cicatriz refleja el quemado real y no una superficie uniforme
+- **WHEN** se calcula la cicatriz sobre una patch con quemado real y se compara con el polígono CEMS de la serie
+- **THEN** la cicatriz toma valores en [0,1] con una fracción de píxeles por encima de 0,5 acotada y solapada con el polígono CEMS, en lugar de valer 1,0 en toda la patch
+
+#### Scenario: Coherencia cuantitativa del generador de cicatriz
+- **WHEN** se evalúa la cicatriz generada sobre el conjunto de muestras frente a los polígonos CEMS
+- **THEN** la IoU media del generador de cicatriz es superior a 0,3
+
+### Requirement: Temporal window with a pre-fire acquisition
+El sistema SHALL componer la ventana temporal de cada muestra con exactamente una adquisición pre-incendio en la primera posición y hasta seis adquisiciones post-incendio que terminan en el frame actual f, usando como corte pre-incendio la hora de adquisición de la primera ronda de monitorización CEMS de la serie, y SHALL NOT descartar la muestra por carecer de adquisición pre-incendio utilizable.
+
+#### Scenario: La secuencia contiene un frame pre-incendio
+- **WHEN** se ensambla una muestra de una serie con adquirido pre-incendio disponible
+- **THEN** el primer frame de la secuencia temporal es la adquisición pre-incendio más reciente y los seis restantes son post-incendios, terminando en el frame actual f
+
+#### Scenario: La adquisición de f se empareja por tiempo y no por marca truncada
+- **WHEN** la marca de tiempo de la adquisición de f en el manifiesto de origen y la del fichero de imagen descargado difieren en menos de un minuto
+- **THEN** esa adquisición se reconoce como el frame f y ocupa la última posición de la ventana temporal
+
+#### Scenario: Una muestra sin adquisición utilizable de f no se ensambla
+- **WHEN** no existe ninguna adquisición utilizable que corresponda al frame actual f
+- **THEN** el sistema no construye la muestra, la informa, y no la sustituye por una adquisición anterior
+
+#### Scenario: La ventana temporal está ordenada cronológicamente
+- **WHEN** se ensambla una muestra
+- **THEN** los siete frames de la ventana temporal están en orden temporal no decreciente
+
+#### Scenario: Relleno cuando no hay suficientes frames
+- **WHEN** la serie dispone de menos de siete adquisiciones utilizables
+- **THEN** el sistema completa la ventana repitiendo el frame más antiguo disponible y entrega igualmente siete frames
+
+#### Scenario: Serie sin adquisición pre-incendio utilizable
+- **WHEN** no existe ninguna adquisición pre-incendio utilizable antes de la primera ronda CEMS
+- **THEN** el sistema ensambla la ventana con las últimas siete adquisiciones utilizables disponibles hasta el frame actual f, sin descartar la muestra, y aplica el mismo relleno de frames del caso general si no hay siete
+
+### Requirement: Filtering of unusable acquisitions
+El sistema SHALL descartar, antes de componer la ventana temporal, toda adquisición en la que más del 20% de los píxeles carezca de dato válido en todas sus bandas y toda adquisición sin ningún píxel válido con señal distinta de cero (adquisiciones nocturnas). El porcentaje se computa sobre los píxeles del frame, no sobre las celdas de banda.
+
+#### Scenario: Exclusión de frames nocturnos
+- **WHEN** una adquisición presenta todos sus píxeles válidos a cero
+- **THEN** el sistema la descarta y no la incluye en ninguna ventana temporal
+
+#### Scenario: Exclusión de frames mayoritariamente sin dato
+- **WHEN** una adquisición supera el 20% de píxeles sin dato válido en ninguna de sus bandas
+- **THEN** el sistema la descarta y no la incluye en ninguna ventana temporal
+
+#### Scenario: Ninguna ventana contiene frames inutilizables
+- **WHEN** se genera el dataset completo
+- **THEN** ninguna de las ventanas temporales almacenadas contiene frames nocturnos ni frames con más del 20% de píxeles sin dato
+
+#### Scenario: El umbral se mide sobre píxeles y no sobre celdas de banda
+- **WHEN** una adquisición tiene píxeles parcialmente observados, con unas bandas válidas y otras sin dato
+- **THEN** esos píxeles cuentan como observados, porque el umbral del 20% se mide sobre los píxeles que no tienen ninguna banda con dato válido
+
+#### Scenario: Un frame con señal y muchos píxeles muertos se descarta
+- **WHEN** una adquisición supera el 20% de sus píxeles sin dato válido en ninguna banda, aunque conserve señal distinta de cero
+- **THEN** el sistema la descarta por ese criterio, con independencia de que tenga señal
+
+### Requirement: Model inputs free of nodata sentinels
+El sistema SHALL NOT almacenar el valor centinela de píxel sin dato en el tensor de entrada OLCI, y SHALL sustituir cada celda de banda sin dato por la media de esa misma banda dentro del frame correspondiente, conservando las bandas válidas de los píxeles parcialmente observados.
+
+#### Scenario: El tensor almacenado no contiene el centinela
+- **WHEN** se inspecciona el tensor de entrada OLCI de una muestra generada
+- **THEN** ningún valor del tensor equivale al centinela de sin dato y ningún valor presenta un orden de magnitud anómalo respecto al resto de la banda
+
+#### Scenario: Un píxel parcialmente observado conserva sus bandas válidas
+- **WHEN** una banda de un píxel carece de dato y otra banda del mismo píxel sí lo tiene
+- **THEN** solo la celda de banda ausente se sustituye por la media de su banda, y el valor de la banda válida se conserva sin alterar
+
+### Requirement: Non-degenerate propagation target
+En el modo de ensamblaje por defecto (`scar`), el sistema SHALL definir el target de propagación como el área quemada nueva entre el frame actual y la ronda objetivo, calculada como el máximo entre cero y la diferencia entre el polígono CEMS de la ronda objetivo y la cicatriz en el frame actual. En el modo `cems` el target de propagación SHALL ser el crecimiento de referencia. En ambos modos SHALL garantizarse una fracción no degenerada de muestras con píxeles quemados.
+
+#### Scenario: El target de la mayoría de las muestras contiene quemado
+- **WHEN** se genera el dataset completo y se inspecciona la distribución de los targets
+- **THEN** al menos la mitad de las muestras contiene píxeles con valor de target igual o superior a 0,5
+
+#### Scenario: El target es cero cuando no hay crecimiento
+- **WHEN** en modo `scar` la cicatriz estimada en el frame actual cubre ya el polígono de la ronda objetivo
+- **THEN** el target de esa muestra es cero en todos sus píxeles, sin valores negativos
+
+#### Scenario: La cicatriz sustraída es la del frame actual
+- **WHEN** se calcula el target de propagación de una muestra
+- **THEN** la cicatriz que se resta al polígono de la ronda objetivo es la estimada en el frame actual f de esa muestra, y no la de una adquisición anterior
+
+### Requirement: Sample loading adapted to the compute backend
+El sistema SHALL resolver la configuración del cargador de muestras de entrenamiento según el backend de GPU disponible, y SHALL NOT pagar un coste de carga de datos multiplicativo por el uso de procesos auxiliares cuando ese backend no lo tolera, de modo que el tiempo de una época de entrenamiento refleje el coste de cómputo del modelo.
+
+#### Scenario: En ROCm la carga se hace en el proceso principal
+- **WHEN** se construye el cargador de muestras de entrenamiento en un entorno con ROCm (AMD)
+- **THEN** el cargador se crea sin procesos auxiliares y sin memoria fijada
+
+#### Scenario: La configuración se puede forzar explícitamente
+- **WHEN** el llamante proporciona un número de procesos auxiliares o un modo de memoria fijada
+- **THEN** el cargador usa esos valores en lugar de los resueltos automáticamente
+
+#### Scenario: La carga de datos no domina el tiempo de la época
+- **WHEN** se mide el tiempo de una época de entrenamiento con la configuración automática y se compara con el de la misma época usando procesos auxiliares
+- **THEN** la configuración automática no es más lenta que la variante con procesos auxiliares
+
+### Requirement: Reference growth target stored alongside the propagation target
+El sistema SHALL almacenar, junto al target de propagación de cada muestra, un target de referencia con el crecimiento real de quemado entre la última ronda de monitorización CEMS conocida en el instante del frame actual y la ronda objetivo, junto con la máscara de píxeles válidos común a ambas rondas, y SHALL NOT alterar por defecto el target de propagación.
+
+#### Scenario: La muestra incluye el crecimiento de referencia
+- **WHEN** se ensambla una muestra para la que existe una ronda CEMS anterior o igual al instante de su frame actual
+- **THEN** el paquete de la muestra incluye el crecimiento de referencia y la validez común a las dos rondas
+
+#### Scenario: El target de propagación por defecto no cambia
+- **WHEN** se ensambla el dataset sin indicar un modo de target
+- **THEN** el target de propagación es el que ya se definía, la validez es la de la ronda objetivo y el dataset resultante es equivalente al anterior
+
+#### Scenario: El ensamblaje puede usar el crecimiento de referencia como target
+- **WHEN** se ensambla el dataset en modo de crecimiento de referencia
+- **THEN** el target de propagación pasa a ser el crecimiento de referencia y las entradas del modelo (secuencia temporal, elevación, cobertura del suelo, cicatriz conocida y horizonte) son idénticas a las del modo por defecto
+
+#### Scenario: Una muestra sin ronda CEMS previa no se descarta por eso
+- **WHEN** una muestra no tiene ninguna ronda CEMS anterior al instante de su frame actual
+- **THEN** el sistema conserva la muestra, deja su target de referencia sin definir y marca su validez común como no evaluable, en lugar de descartarla
+
+### Requirement: Canonical encoding of the validity mask
+El sistema SHALL codificar la máscara de validez de cada muestra con `1` = píxel evaluable y `255` = píxel ignorado, tanto en la máscara del target de ensamblaje como en la validez común entre rondas, y SHALL NOT almacenar ningún otro valor en las máscaras del paquete almacenado. El cargador de muestras SHALL tolerar paquetes antiguos que empleen otros valores, normalizándolos a la codificación canónica al leerlos.
+
+#### Scenario: Las dos máscaras comparten la misma codificación
+- **WHEN** se inspecciona un paquete de muestra generado en cualquier modo de ensamblaje
+- **THEN** tanto la máscara del target como la validez común entre rondas contienen únicamente los valores `1` y `255`, y los píxeles ignorados se distinguen de los evaluables
+
+#### Scenario: La validez común marca como ignorados los píxeles no observados
+- **WHEN** se ensambla el dataset en modo de crecimiento de referencia y un píxel no fue observado en alguna de las dos rondas
+- **THEN** ese píxel queda marcado como ignorado (`255`) en la validez común, y no como evaluable
+
+#### Scenario: El paquete almacenado cumple la codificación sin pasar por el cargador
+- **WHEN** se inspecciona el fichero de una muestra almacenada, sin pasar por el cargador de muestras
+- **THEN** sus dos máscaras contienen únicamente los valores `1` y `255`, sin ningún valor heredado de codificaciones anteriores
+
+#### Scenario: El cargador normaliza los paquetes antiguos
+- **WHEN** se lee un paquete almacenado con un valor distinto de `1` en lugar de `255`
+- **THEN** el cargador lo entrega ya normalizado a `255`, de modo que ningún consumidor de la muestra recibe un valor no canónico
+
+### Requirement: Traceable dataset version
+El sistema SHALL registrar en el índice del dataset la versión del generador con la que se construyó el conjunto de muestras, junto al modo de target y la marca de tiempo, de modo que se pueda detectar que un dataset almacenado fue producido por un generador distinto del vigente.
+
+#### Scenario: El índice identifica la versión del generador
+- **WHEN** se genera el dataset
+- **THEN** el índice registra la versión del generador junto a la marca de tiempo y al modo de target
+
+#### Scenario: Un dataset desactualizado es detectable
+- **WHEN** se compara la versión del generador registrada en el índice de un dataset almacenado con la versión vigente
+- **THEN** la diferencia queda a la vista antes de usar ese dataset para entrenar o evaluar
+
+### Requirement: Complete acquisition inventory per series
+El sistema SHALL obtener todas las adquisiciones candidatas de cada serie dentro del rango temporal de interés, consultando la fuente de imágenes con la misma cobertura geográfica que el catálogo de referencia y sin truncar el resultado de la consulta por un límite de resultados, y SHALL informar de cualquier adquisición descartada por esos motivos.
+
+#### Scenario: La consulta usa la cobertura geográfica del catálogo de referencia
+- **WHEN** la colección de imágenes se consulta para una serie
+- **THEN** la consulta cubre la extensión del área de interés de la serie, y no un punto, de modo que toda adquisición que el catálogo de referencia lista para esa área intersecte el resultado de la consulta
+
+#### Scenario: Ninguna serie pierde adquisiciones por un límite de resultados
+- **WHEN** una serie tiene más adquisiciones candidatas que el límite de resultados de la consulta de imágenes
+- **THEN** todas ellas se descargan y quedan disponibles para el ensamblaje de muestras
+
+#### Scenario: El descarte por tope de consulta queda visible
+- **WHEN** la consulta de imágenes de una serie alcanza su límite de resultados
+- **THEN** el proceso informa de que el inventario de adquisiciones de esa serie puede estar incompleto
+
+### Requirement: Canonical acquisition and sample identity
+El sistema SHALL identificar una adquisición OLCI por satélite y marca temporal UTC canónica, SHALL colapsar productos de catálogo que representen la misma adquisición y SHALL garantizar que cada `sample_id` y cada ruta de fichero aparezca una sola vez en el índice.
+
+#### Scenario: Productos de catálogo duplicados representan una adquisición
+- **WHEN** dos o más productos del catálogo tienen el mismo satélite y la misma marca temporal canónica
+- **THEN** el sistema conserva una sola adquisición, selecciona un representante determinista y registra los identificadores de producto colapsados para auditoría
+
+#### Scenario: Una colisión no puede resolverse canonicamente
+- **WHEN** dos adquisiciones distintas requieren la misma clave de frame o la misma ruta de paquete
+- **THEN** el ensamblador aborta antes de publicar el índice y informa de la colisión
+
+#### Scenario: El índice mantiene una correspondencia uno a uno
+- **WHEN** se genera el índice final
+- **THEN** no contiene identificadores de muestra ni rutas de fichero repetidos y su recuento coincide con los paquetes canónicos almacenados
+
+### Requirement: Validation of required static layers
+El sistema SHALL validar DEM y WorldCover antes de ensamblar muestras y SHALL NOT crear muestras para una serie cuya capa estática requerida esté ausente, vacía, contenga valores no finitos o use clases WorldCover no admitidas.
+
+#### Scenario: WorldCover está completamente vacío
+- **WHEN** una serie tiene WorldCover con cero en todos sus píxeles
+- **THEN** el sistema excluye la serie, registra el motivo de exclusión y no genera muestras para ella
+
+#### Scenario: Una capa estática inválida ya existente no se reutiliza
+- **WHEN** se encuentra un fichero estático almacenado que no supera la validación
+- **THEN** el sistema no lo reutiliza, intenta obtener una copia válida y, si no puede, excluye la serie de forma explícita
+
+#### Scenario: Las capas estáticas son válidas
+- **WHEN** DEM y WorldCover tienen la forma esperada y valores admitidos
+- **THEN** el sistema puede ensamblar las muestras de la serie usando esas capas
+
+### Requirement: Explicit cold-start coverage
+El sistema SHALL registrar el estado de cobertura de `x_scar` de cada muestra y SHALL publicar el número de muestras con cicatriz genuinamente vacía; si no existe ninguna, SHALL declarar el arranque en frío como no representado y SHALL NOT fabricarlo alterando `x_scar` o el target.
+
+#### Scenario: El dataset contiene una muestra de cicatriz vacía
+- **WHEN** una muestra almacenada tiene `x_scar` igual a cero en todos sus píxeles
+- **THEN** el índice la clasifica como muestra de arranque en frío y la incluye en el recuento de cobertura correspondiente
+
+#### Scenario: El dataset no contiene arranque en frío
+- **WHEN** ninguna muestra almacenada tiene `x_scar` completamente vacío
+- **THEN** el inventario declara que el arranque en frío no está representado y no genera una copia con la cicatriz forzada a cero
+
+### Requirement: Horizon support is published
+El índice SHALL publicar la distribución empírica de `horizon_days`, SHALL contar las muestras en las bandas `(0,1]`, `(1,3]`, `(3,7]`, `(7,14]` y `(14,+inf)` días y SHALL conservar todas las muestras con horizonte positivo observado sin imponer un máximo fijo ni descartarlas por su banda.
+
+#### Scenario: El inventario resume el soporte temporal
+- **WHEN** se genera el índice final
+- **THEN** registra mínimo, percentiles 25, 50, 75 y 90, máximo y el recuento de muestras de cada banda de horizonte
+
+#### Scenario: Un horizonte continuo cae en una banda inequívoca
+- **WHEN** una muestra tiene un valor continuo de `horizon_days`
+- **THEN** la muestra se cuenta en exactamente una banda y su valor original se conserva sin redondear ni agrupar
+
+#### Scenario: Una muestra pertenece a una banda de cola
+- **WHEN** una muestra tiene un horizonte positivo observado fuera de las bandas con mayor soporte
+- **THEN** el índice la conserva, registra su banda y su valor continuo y no la excluye por ese motivo
+
+### Requirement: Traceable dataset coverage inventory
+El índice SHALL registrar el número de entradas, muestras únicas, ficheros únicos, series y distribución por fold, junto con las series excluidas y sus motivos.
+
+#### Scenario: Una serie se excluye durante el ensamblaje
+- **WHEN** el ensamblador excluye una serie por una validación o una falta de datos
+- **THEN** el índice incluye su identificador y el motivo, y los recuentos publicados corresponden solo a las muestras incluidas
+
+#### Scenario: El inventario permite reconciliar el dataset
+- **WHEN** se compara el índice con el directorio de muestras
+- **THEN** el número de muestras únicas del índice coincide con el número de paquetes canónicos y las exclusiones justifican la diferencia respecto al censo de entrada

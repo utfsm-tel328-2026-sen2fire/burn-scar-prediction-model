@@ -20,7 +20,7 @@ El flujo implementado transforma datos satelitales en bruto (imágenes ópticas 
                                                                  │
                                                                  ▼
                                                   BurnScarDataset (PyTorch)
-                                                  (390 muestras en 5 Folds)
+                                                  (295 muestras en 5 Folds)
 ```
 
 ---
@@ -51,9 +51,9 @@ Ejecutada con [`scripts/audit_tmb_splits.py`](../scripts/audit_tmb_splits.py):
 
 ### 3.2 Censo Real de Muestras (P7 Resuelto)
 Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) se cruzaron los intervalos de observación entre rondas CEMS con las pasadas efectivas de Sentinel-3 OLCI:
-- Se identificaron **414 muestras $(f, h)$** potenciales sobre 44 series.
-- Tras la validación de secuencias temporales completas de 7 frames, se ensamblaron **390 muestras finales**.
-- Distribución de horizontes objetivos: **mediana $h = 0.92$ días (~22 h)**, $p_{25}=0.03\text{ d}$, $p_{75}=1.18\text{ d}$.
+- Se identificaron **411 muestras $(f, h)$** potenciales sobre 44 series, tras colapsar tres productos OLCI duplicados del catálogo CDSE.
+- Con el inventario local de adquisiciones se ensamblan **295 muestras finales** en 40 series (el dataset canónico se regeneró el 2026-11-16 con identidad de adquisición única, validación de capas estáticas e inventario de cobertura; ver [`operacion.md`](operacion.md) §9).
+- Distribución de horizontes objetivos: **mediana $h = 0.897$ días**, $p_{25}=0.027\text{ d}$, $p_{75}=1.042\text{ d}$.
 
 ### 3.3 Auditoría de Cambio de Sensor (R14 Medido)
 - **116 de 188 transiciones (61.7%) cambiaron de sensor** entre rondas consecutivas (ej. Legion 50 cm $\leftrightarrow$ Sentinel-2 10 m $\leftrightarrow$ SPOT-6/7 1.5 m).
@@ -83,6 +83,7 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
 * **Módulo:** [`src/burn_scar/models/tmb_s3.py`](../src/burn_scar/models/tmb_s3.py)
 * **Arquitectura:** ConvLSTM temporal (kernel $3\times 3$, 64 canales ocultos) + Backbone MiniSegFormer de 3 etapas con Efficient Self-Attention (SR-Ratios 4, 2, 1).
 * **Pesos:** Checkpoint `convlstm_segformer_prepost_subset` descargado desde Hugging Face (`links-ads/tmb-s3`, 4.62 MB).
+* **Salida correcta:** el canal **0** del modelo es el logit de "quemado" (upstream `bafep/modules/mean_teacher.py`: `_FIRE_CH = 0`, entrenado con BCE sobre un único logit). El canal **1** es la *cabeza de nubes* (`_CLOUD_CH = 1`), entrenada con peso `lambda_cloud = 0`, por lo que sus valores no son fiables. La cicatriz se obtiene con `sigmoid(logits[:, :, 0])`.
 * **Comportamiento:** Se carga en la GPU (NVIDIA RTX 5060) en modo `eval()`, con todos los pesos congelados (`requires_grad = False`). Produce el mapa de probabilidad de quemado actual `scar` sobre parches de $64\times 64$.
 
 ### Paso 4: Descarga de Imágenes Satelitales y Relieve (GEE)
@@ -97,12 +98,25 @@ Mediante [`scripts/build_cems_manifest.py`](../scripts/build_cems_manifest.py) s
 * **Script:** [`scripts/build_pytorch_dataset.py`](../scripts/build_pytorch_dataset.py)
 * **Módulo Dataset:** [`src/burn_scar/dataset.py`](../src/burn_scar/dataset.py)
 * **Operación:**
-  1. Alinea cada muestra con su ventana temporal de 7 frames OLCI terminando en $f$.
-  2. Ejecuta TMB-S3 en GPU para obtener $\text{scar}(f) \in [0, 1]$.
-  3. Calcula el target causal:
+  1. Compone la ventana temporal de 7 frames OLCI como **1 frame pre-incendio + 6 post-incendio** que terminan en $f$ (BL1). El corte pre-incendio es la hora de adquisición de la primera ronda CEMS de la serie.
+  2. Descarta las adquisiciones no utilizables: las que superan el **20% de píxeles sin dato** (mismo criterio que el dataset upstream) y las **nocturnas** (sin ningún píxel válido con señal).
+  3. Sustituye cada píxel sin dato por la **media de su banda** en el frame (nunca 0: en las bandas visibles el 0 parecería quemado).
+  4. Ejecuta TMB-S3 en GPU para obtener $\text{scar}(f) \in [0, 1]$.
+  5. Calcula el target causal:
      $$\text{Target}(f, h) = \text{clip}\left(\text{CEMS}(r+1) - \text{scar}_{\text{TMB3}}(f),\, 0,\, 1\right)$$
-  4. Asigna cada muestra a su Fold geográfico correspondiente.
-* **Resultado:** 390 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json`.
+  6. Calcula además el **target de referencia**, el crecimiento real entre la última ronda
+     CEMS conocida en el instante $f$ ($r_f$) y la ronda objetivo:
+     $$\text{Target}_{\text{ref}}(f) = \text{clip}\left(\text{CEMS}(r+1) - \text{CEMS}(r_f),\, 0,\, 1\right)$$
+     con la validez común a las dos rondas. El dataset guarda **las dos etiquetas**
+     (`target` y `target_cems`); la de ensamblaje tiene 11,1× más superficie que la de
+     referencia y una IoU de solo 0,083 con ella (ver [`operacion.md`](operacion.md) §9).
+  7. Asigna cada muestra a su Fold geográfico correspondiente.
+* **Modos de ensamblaje:** `--target-mode scar` (por defecto, el target de producción) y
+  `--target-mode cems` (diagnóstico: el target de propagación pasa a ser el crecimiento
+  real; **las entradas del modelo son idénticas en ambos modos**, solo cambia la etiqueta).
+  El modo se registra en `dataset_index.json`.
+* **Resultado:** 295 archivos `.npz` en `data/processed/samples/` e índice maestro `data/processed/dataset_index.json` (cada entrada incluye `frame_keys` y `frame_key` para auditar la ventana temporal, además de su banda de horizonte, su estado de cicatriz y la versión de esquema del índice). El dataset canónico se regeneró el 2026-11-16; las exclusiones y sus motivos están desglosados en [`operacion.md`](operacion.md) §9.
+* **Verificación:** 256/270 muestras de validación tienen target con quemado (≥0,5) y ninguna ventana contiene frames nocturnos ni valores centinela. Los invariantes de la ventana (terminar en `f` y estar ordenadas en el tiempo) se comprueban en `tests/test_dataset_invariants.py`, y la codificación canónica de las máscaras sobre el fichero almacenado, en `tests/test_generator_version.py`. El dataset **no se versiona en Git** (`data/` está en `.gitignore`): hay que regenerarlo en local tras cualquier cambio en el generador o en la ventana temporal (ver [`operacion.md`](operacion.md) §8). El índice registra además la versión del generador, y el cargador avisa si el dataset almacenado no corresponde al código vigente.
 
 ---
 
@@ -136,6 +150,14 @@ Al iterar con `DataLoader`, cada elemento contiene:
 | `horizon_days` | `(B, 1)` | `float32` | $[0.0, 16.0]$ | Días hacia el objetivo $h$ |
 | `target` | `(B, 1, 64, 64)` | `float32` | $[0.0, 1.0]$ | **Lo nuevo quemado** entre $f$ y $f+h$ (Ground Truth) |
 | `mask` | `(B, 1, 64, 64)` | `uint8` | $\{1, 255\}$ | Máscara de validez (`1` = evaluable, `255` = ignorar) |
+| `target_cems` | `(B, 1, 64, 64)` | `float32` | $[0.0, 1.0]$ | Target de referencia: crecimiento real entre rondas CEMS |
+| `mask_cems` | `(B, 1, 64, 64)` | `uint8` | $\{1, 255\}$ | Validez común a las dos rondas CEMS (misma codificación que `mask`) |
+| `has_reference` | `(B, 1)` | `float32` | $\{0.0, 1.0\}$ | `1` si la muestra trae target de referencia |
+
+> **Codificación canónica de las máscaras:** `1` = píxel evaluable, `255` = píxel ignorado
+> (no observado en la ronda). Las dos máscaras usan la misma convención, también en el
+> modo de ensamblaje `cems`; el cargador normaliza los paquetes antiguos que usaban `0`
+> para "no evaluable".
 
 ### 6.2 Código de Entrenamiento
 ```python
@@ -143,7 +165,10 @@ import torch
 from burn_scar.dataset import get_cv_dataloaders
 
 # Configurar Validación Cruzada (entrena en folds 1..4 y valida en fold 0)
-train_loader, val_loader = get_cv_dataloaders(val_fold=0, batch_size=8, num_workers=2)
+# num_workers=None resuelve según el backend: 0 en ROCm (AMD), 2 en CUDA.
+# Ver docs/operacion.md §8: con procesos auxiliares en AMD la época tarda 74 s
+# en lugar de 1,7 s.
+train_loader, val_loader = get_cv_dataloaders(val_fold=0, batch_size=8)
 
 for batch in train_loader:
     x_olci = batch["x_olci"].cuda()       # (8, 7, 5, 64, 64)
@@ -180,12 +205,13 @@ uv run pytest -v
 ```
 
 ```
-tests/test_baselines.py ...                                              [ 15%]
-tests/test_dataset.py ..                                                 [ 26%]
-tests/test_env.py .....                                                  [ 52%]
-tests/test_tmb_s3.py ...                                                 [ 68%]
+tests/test_baselines.py .....                                             [ 17%]
+tests/test_dataset.py ..                                                 [ 23%]
+tests/test_env.py .....                                                  [ 40%]
+tests/test_propagation.py ...                                            [ 50%]
+tests/test_tmb_s3.py ...                                                 [ 63%]
 tests/test_tracking.py ......                                            [100%]
-============================== 19 passed in 3.06s ==============================
+============================= 24 passed in 8.11s ==============================
 ```
 
 ---
@@ -211,8 +237,13 @@ uv run python scripts/rasterize_cems_labels.py
 uv run python scripts/download_gee_olci.py
 
 # 6. Precalcular cicatriz con TMB-S3 y ensamblar muestras del dataset
+#    (≈20 s en GPU; hay que repetirlo tras cualquier cambio en el generador
+#     de cicatriz o en la ventana temporal: el dataset no se versiona en Git)
 uv run python scripts/build_pytorch_dataset.py
 
 # 7. Ejecutar evaluación de los baselines de referencia
 uv run python scripts/evaluate_baselines.py
+
+# 8. Entrenar el modelo de propagación (≈4 min; usar nohup/tmux si crece)
+uv run python scripts/train_propagation.py --epochs 15 --tag prop_v2
 ```

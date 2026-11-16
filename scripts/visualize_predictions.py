@@ -13,7 +13,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import numpy as np
 import torch
 
 from burn_scar.dataset import get_cv_dataloaders
@@ -23,8 +22,10 @@ from burn_scar.visualization import (
     build_comparison_panel,
     evaluate_validation_samples,
     export_panel_png,
+    informative_metric_mean,
     load_propagation_checkpoint,
     select_samples,
+    split_informative_samples,
 )
 
 
@@ -169,8 +170,9 @@ def run_visualization(
         seed=args.seed,
     )
 
-    mean_f1 = float(np.mean([s.f1 for s in evaluated]))
-    mean_iou = float(np.mean([s.iou for s in evaluated]))
+    informative, n_no_informativas = split_informative_samples(evaluated)
+    mean_f1 = informative_metric_mean(evaluated, "f1")
+    mean_iou = informative_metric_mean(evaluated, "iou")
     ckpt_epoch = ckpt.get("epoch", "?")
 
     print("=" * 72)
@@ -179,6 +181,10 @@ def run_visualization(
     print(
         f"Muestras eval: {len(evaluated)} | Seleccionadas: {len(selected)} (modo={args.mode}) | "
         f"Umbral: {args.threshold:.2f}"
+    )
+    print(
+        f"Muestras informativas: {len(informative)}/{len(evaluated)} "
+        f"(no informativas excluidas: {n_no_informativas})"
     )
     print(
         "Orden de bloques en cada panel: "

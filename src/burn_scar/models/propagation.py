@@ -33,14 +33,12 @@ def corrupt_scar(x_scar: Tensor, drop_prob: float = 0.15) -> Tensor:
     keep_mask = (torch.rand_like(out) >= drop_prob).to(out.dtype)
     out = out * keep_mask
 
-    # 2. Dilatación (50%) o erosión (50%) de 1 píxel por muestra en el batch
-    B = out.shape[0]
-    for i in range(B):
-        patch = out[i : i + 1]
-        if torch.rand(1, device=out.device).item() < 0.5:
-            out[i : i + 1] = F.max_pool2d(patch, kernel_size=3, stride=1, padding=1)
-        else:
-            out[i : i + 1] = -F.max_pool2d(-patch, kernel_size=3, stride=1, padding=1)
+    # 2. Dilatación (50%) o erosión (50%) de 1 píxel, decided en una sola
+    #    tirada para no sincronizar la GPU una vez por muestra del lote.
+    dilate = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
+    erode = -F.max_pool2d(-out, kernel_size=3, stride=1, padding=1)
+    use_dilate = torch.rand(out.shape[0], 1, 1, 1, device=out.device) < 0.5
+    out = torch.where(use_dilate, dilate, erode)
 
     return out.clamp(0.0, 1.0)
 
@@ -123,16 +121,30 @@ def masked_bce_dice_loss(
     logits: Tensor,
     target: Tensor,
     mask: Tensor,
-    pos_weight: float = 4.0,
+    pos_weight: float | None = None,
     dice_weight: float = 0.5,
+    max_pos_weight: float = 50.0,
 ) -> Tensor:
     """
     Pérdida BCEWithLogits + Soft Dice calculada solo en píxeles válidos (mask == 1).
+
+    Args:
+        pos_weight: peso de la clase positiva. Si es None se deriva del desbalance
+            real del lote (píxeles válidos no quemados / píxeles válidos quemados),
+            acotado a [1, max_pos_weight]. Con ~5% de píxeles quemados, un valor
+            fijo bajo hace que el modelo prediga ausencia de quemado (recall ~0).
     """
     valid = (mask == 1).float()
     valid_count = valid.sum().clamp(min=1.0)
 
-    pw = torch.tensor([pos_weight], device=logits.device, dtype=logits.dtype)
+    if pos_weight is None:
+        n_pos = (target * valid).sum()
+        n_neg = (valid_count - n_pos).clamp(min=0.0)
+        pw_value = float((n_neg / n_pos.clamp(min=1.0)).clamp(1.0, max_pos_weight).item())
+    else:
+        pw_value = float(pos_weight)
+
+    pw = torch.full_like(target, pw_value)
     bce_per_px = F.binary_cross_entropy_with_logits(
         logits, target, pos_weight=pw, reduction="none"
     )

@@ -195,6 +195,73 @@ un experimento barato y no toca el resto de la cadena de procesamiento.
 El detalle de cuentas por fuente está en [`datos.md`](datos.md) §6.1. CEMS, como cualquier
 otra fuente de etiquetas, **nunca está en el camino de inferencia** (datos.md §6.4).
 
+### 6.1 Autenticarse en Earth Engine (para `scripts/download_gee_olci.py`)
+
+El script necesita un proyecto de Google Cloud con la API de Earth Engine activada y
+registrado para uso comercial o no comercial. Hay dos formas de autenticarse:
+
+**A) Credenciales personales (lo habitual).** Desde una máquina con navegador:
+
+```bash
+earthengine authenticate
+earthengine set_project MI_PROYECTO
+```
+
+Quedan guardadas en `~/.config/earthengine/credentials` y el script las usa tal cual.
+
+**B) Cuenta de servicio (para máquinas sin navegador: servidores, contenedores, WSL).**
+Es la opción que usa quien no tiene GUI. La cuenta de servicio necesita **dos roles** en el
+proyecto, y su clave JSON **fuera del repositorio**:
+
+| Rol en la consola | ID | Para qué |
+|---|---|---|
+| **Earth Engine Resource Admin** | `roles/earthengine.resourceAdmin` | poder usar Earth Engine: crear computations, leer assets |
+| **Service Usage Consumer** | `roles/serviceusage.serviceUsageConsumer` | poder *usar* la API de EE en el proyecto (`serviceusage.services.use`) |
+
+Los dos hacen falta, y **los dos son de la cuenta de servicio**, no del usuario: es la
+cuenta la que llama a la API.
+
+> Con solo el primer rol, `ee.Initialize()` funciona pero **consultar la colección falla**
+> con `Permission 'earthengine.computations.create' denied` o
+> `Caller does not have required permission to use project ...`. Son errores distintos para
+> el mismo síntoma: el primero es que el proyecto no está registrado, el segundo es que
+> falta el rol de Service Usage Consumer.
+
+Los dos errores suenan a permiso pero significan cosas distintas, y es fácil confundirlos:
+
+| Mensaje | Qué falta |
+|---|---|
+| `Permission 'earthengine.computations.create' denied ... (or it may not exist)` | el **proyecto no está registrado** para Earth Engine → paso de registro web |
+| `Caller does not have required permission to use project ... Grant the caller the roles/serviceusage.serviceUsageConsumer role` | falta el **rol de Service Usage Consumer** |
+
+Y un tercer matiz: tras conceder un rol, la IAM de Google **se propaga de forma gradual**, así
+que durante unos minutos Earth Engine puede seguir dando errores de permiso que luego se
+resuelven solos. `scripts/check_ee_access.py` los distingue y dice qué falta:
+
+```bash
+# .env  (ya está en .gitignore)
+EARTHENGINE_PROJECT=MI_PROYECTO
+EARTHENGINE_SERVICE_ACCOUNT=/home/usuario/.config/earthengine/service-account.json
+```
+
+Las variables del entorno real tienen prioridad sobre el `.env`. Si no hay ninguna de las
+dos, el script se comporta exactamente como antes: `ee.Initialize()` a secas.
+
+### 6.2 Comprobar el acceso antes de descargar
+
+```bash
+python scripts/check_ee_access.py
+```
+
+Comprueba, en este orden: si la API de Earth Engine está habilitada, si `ee.Initialize()`
+funciona y si la consulta real de la colección OLCI responde (que es lo que exige
+`serviceusage.services.use`, el permiso que más falla). Dice qué falta en cada caso y sale
+con código 1 si algo no está listo.
+
+> En NixOS, el wheel de `rasterio` (que usa el script para abrir los GeoTIFF) necesita
+> `libexpat.so.1`, que no existe en el sistema. `devenv.nix` lo resuelve propagando
+> `expat`; ver [`nixos.md`](nixos.md) §5.
+
 ## 7. Qué cambia en el diseño por todo esto
 
 | Cambio | Por qué |
@@ -212,3 +279,325 @@ otra fuente de etiquetas, **nunca está en el camino de inferencia** (datos.md �
 | **La evaluación es siempre contra CEMS** | CEMS lo dibujaron analistas con otras imágenes; con FireCCI S3.1.1 el modelo podría replicar su clasificador en vez de aprender física (investigacion.md §2, R21) |
 | **La entrada de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
 | **FIRMS/VIIRS como canal adicional** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
+
+## 8. Regenerar el dataset y lanzar runs largos
+
+> **El dataset no se versiona en Git** (`data/` está en `.gitignore`). Cada workstation
+> genera el suyo en local, y **el dataset debe regenerarse siempre después de tocar el
+> generador de cicatriz o la construcción de la ventana temporal**.
+
+### Orden obligatorio antes de entrenar
+
+```bash
+# 1. Regenerar el dataset (≈20 s con GPU; no requiere re-descargar nada)
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+
+# 2. Fijar la referencia de comparación (baselines B0/B1 sobre el dataset nuevo)
+uv run --extra rocm python scripts/evaluate_baselines.py
+
+# 3. Entrenar (≈1 s por época y fold → ~1,5 min para 15 épocas × 5 folds)
+nohup uv run --extra rocm python scripts/train_propagation.py \
+      --epochs 15 --seed 42 --tag prop_v4_integrity > runs/prop_v4_integrity.log 2>&1 &
+```
+
+**El paso 1 no es opcional.** La cicatriz de entrada (`x_scar`) y el target están
+horneados dentro de los `.npz` de cada muestra: cambiar el generador sin regenerar deja
+el dataset viejo en disco y el entrenamiento sigue usando el anterior.
+
+### En AMD (ROCm), el DataLoader es el problema, no la GPU
+
+Medido en la RX 6800 XT (gfx1030, ROCm 6.4) con este dataset:
+
+| DataLoader | train/época | validación |
+|---|---|---|
+| `num_workers=2` + `pin_memory=True` (lo que había) | 74 s | 12 s |
+| `num_workers=2`, sin `pin_memory` | 82 s | 9 s |
+| `num_workers=0` | **1,7 s** | **0,07 s** |
+
+Los workers se bifurcan (`fork`) desde un proceso que ya tiene el contexto HIP
+inicializado, y esa bifurcación cuesta decenas de segundos. Con `pin_memory` encima,
+cada lote reserva memoria fijada con `hipHostMalloc`, que en ROCm es carísimo.
+
+**La GPU nunca fue el problema**: el modelo son 780 k parámetros y son 32 ms por lote.
+El script detecta el backend y usa `num_workers=0` en ROCm, `2` en CUDA. Se puede
+forzar con `--num-workers N` y `--pin-memory` / `--no-pin-memory`.
+
+Si algún día el dataset crece mucho (miles de muestras), el diagnosis cambia: ahí sí
+compensa pagar la carga en paralelo, y conviene medir antes de asumir.
+
+### Runs largos
+
+El entrenamiento completo son ~2 min con el dataset vigente (295 muestras): lánzalo con `nohup` (o `tmux`) y vigila el log.
+Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el proceso.
+
+### Cómo leer los números
+
+- **F1 a umbral 0,5** y **F1 en el mejor umbral** se reportan por separado. Un modelo
+  probabilístico desbalanceado rara vez opera en 0,5; el barrido de umbrales (0,1–0,7)
+  da el punto de operación real y hace la comparación con los baselines binarios justa.
+- **El umbral operativo se congela**: al terminar la CV se toma la mediana de los
+  umbrales óptimos de cada fold de validación y se guarda en
+  `checkpoints/<run>/operational_threshold.json` junto a los pesos. El conjunto de test
+  (fold -1, fuera de dominio) se evalúa **después**, con ese umbral ya congelado: es el
+  número publicable, porque el test no ha participado ni en la elección del checkpoint
+  ni en la del umbral.
+- **En inferencia, ese umbral es una constante**: `quemado = probs >= TAU_OPERACION`.
+  Si los umbrales óptimos difieren en más de 0,1 entre folds, el entrenamiento avisa de
+  que el modelo es inestable y el umbral poco fiable.
+- **Para estimar área quemada no hace falta umbral**: el área esperada es la suma de las
+  probabilidades. El umbral solo se aplica cuando hace falta una decisión binaria
+  (activar una alerta, categorizar un mapa de riesgo).
+- **Recall** importa tanto como el F1: un F1 bajo con recall ~0 significa que el modelo
+  predice ausencia de quemado, no que no haya aprendido nada.
+- **Un target sin quemado se reporta como NaN**, no como F1 = 1,0. Si un informe muestra
+  un 100% sin más, suspecta de un dataset vacío antes de congratularte.
+- La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
+  el mismo dataset.
+
+## 9. Qué etiqueta se está midiendo (diagnóstico del target)
+
+El dataset guarda **dos etiquetas** por muestra:
+
+| Etiqueta | Definición | Para qué |
+|---|---|---|
+| **De ensamblaje** (`target`) | `clip(CEMS(r+h) − cicatriz_TMB3(f), 0, 1)` | Es la que entrena el modelo de producción |
+| **De referencia** (`target_cems`) | `clip(CEMS(r+h) − CEMS(r_f), 0, 1)` | El crecimiento **real** entre rondas CEMS. Es la verdad de propagación |
+
+No son la misma cosa. La de ensamblaje resta una **fotografía** de TMB-S3, que en el frente
+de fuego se queda corta: el resultado mezcla crecimiento nuevo con quemado que ya existía
+y que el generador no detectó. Medido sobre las **295 muestras** del dataset vigente:
+
+| | Etiqueta de ensamblaje | Etiqueta de referencia |
+|---|---|---|
+| Superficie mediana a umbral 0,5 | 55,5 px | **1,5 px** (37× menos) |
+| IoU media entre ambas | **0,033** | — |
+
+**Por eso el F1 de ensamblaje no puede interpretarse como propagación**: una etiqueta mucho
+más grande es más fácil de acertar.
+
+### El dataset vigente y por qué tiene 295 muestras
+
+El dataset canónico se regeneró el 2026-11-16 con identidad de adquisición única, validación
+de capas estáticas e inventario de cobertura. El manifiesto contiene **411 muestras
+candidatas únicas** tras colapsar tres productos CDSE duplicados.
+
+| Motivo del descarte | Candidatas |
+|---|---:|
+| `EMSR785_AOI01`: WorldCover completamente vacío en una descarga limpia | 48 |
+| Etiquetas CEMS rasterizadas no disponibles | 5 |
+| La ronda objetivo no existe en la etiqueta local | 19 |
+| Adquisición de `f` ausente o no utilizable | 44 |
+| **Total** | **116** |
+| **Muestras ensambladas** | **295** |
+
+Todas las 295 entradas tienen `sample_id` y ruta de fichero únicos, repartidas en 40 series.
+La serie excluida y el motivo quedan registrados en `inventory.excluded_series` del índice
+(`EMSR785_AOI01`, `reason: invalid_static_layers`, `stage: static_layers`). Composición por
+fold: 29 (f0), 15 (f1), 108 (f2), 95 (f3), 23 (f4) y **25 fuera de dominio** (fold -1, test).
+
+El soporte de horizontes es explícito y no se filtra: 171 muestras en `(0,1]`, 98 en `(1,3]`,
+25 en `(3,7]`, 1 en `(7,14]` y ninguna en `(14,+inf)`. La mediana es 0,897 días y el máximo
+observado 7,024. **No hay horizonte máximo en el dataset ni en la evaluación**: `h` se
+conserva continuo y las bandas son solo diagnóstico, de modo que ninguna banda filtra el
+entrenamiento ni las métricas globales. **Ninguna muestra representa un arranque en frío**:
+las 295 tienen cicatriz no vacía y el índice declara `cold_start_represented: false`.
+
+### Protocolo de conteos y procedencia
+
+Todo número que se publica distingue cuatro denominadores, que nunca se colapsan en uno:
+
+| Denominador | Qué cuenta | Dónde vive |
+|---|---|---|
+| **Entradas** | filas del índice, una por muestra candidata aceptada | `inventory.total_entries` |
+| **Muestras únicas** | entradas con `sample_id` distinto | `inventory.total_unique_samples` |
+| **Ficheros únicos** | entradas con ruta de fichero distinta | `inventory.total_unique_files` |
+| **Series** | valores distintos de `series_id` | `inventory.total_series` |
+
+A esos se añaden los **muestras evaluables** de cada etiqueta, que son un subconjunto
+distinto según la verdad contenga quemado o no. La evaluación informa del mismo descriptivo
+para el modelo y para los baselines (`evaluated_set`), de modo que dos cifras solo se comparan
+si comparten índice, umbral, etiquetas y subconjunto.
+
+La procedencia es obligatoria en cada artefacto: el índice registra la versión del generador,
+la huella SHA-256 del manifiesto de entrada y una huella de contenido estable
+(`dataset_content_sha256`); `operational_threshold.json` registra la huella del índice, la
+semilla, el modo de target, el esquema, el soporte de horizontes y la huella de cada
+checkpoint. `scripts/verify_canonical_artifacts.py` contrasta esas sumas de verificación
+contra `artefactos/canonicos.json`.
+
+### Resultados canónicos
+
+Conjunto de test (fold -1, fuera de dominio: 25 muestras únicas, 7 series), **umbral
+operativo congelado en 0,10**, con modelo y baselines sobre el mismo índice, el mismo umbral,
+las mismas etiquetas y el mismo subconjunto evaluable.
+
+**Contra la etiqueta de ensamblaje** (`target`, incluye quemado no detectado por TMB-S3):
+
+| Modelo | F1 | IoU | Precisión | Recall | Evaluables |
+|---|---:|---:|---:|---:|---|
+| B0 persistencia | 0,00% | 0,00% | 0,00% | 0,00% | 24/25 |
+| B1 dilatación radial | 15,94% | 9,00% | 19,11% | 30,07% | 24/25 |
+| Trivial "todo quemado" | 16,29% | 9,41% | 9,41% | 100,00% | 24/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **25,45%** | 27,64% | 87,04% | 24/25 |
+
+**Contra la referencia** (crecimiento real entre rondas CEMS, que es propagación):
+
+| Modelo | F1 | IoU | Precisión | Recall | Evaluables |
+|---|---:|---:|---:|---:|---|
+| B0 persistencia | 0,00% | 0,00% | 0,00% | 0,00% | 23/25 |
+| B1 dilatación radial | 7,30% | 3,90% | 7,74% | 12,22% | 23/25 |
+| Trivial "todo quemado" | 8,42% | 4,73% | 4,73% | 100,00% | 23/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | **14,80%** | **8,78%** | 9,88% | 82,31% | 23/25 |
+
+**Soporte por banda de horizonte** (estrato de diagnóstico; ninguna banda filtra nada):
+
+| Banda | Ensamblaje | Referencia |
+|---|---|---|
+| `(0,1]` | F1 32,24%, IoU 21,91%, 18/19 evaluables (6 series) | F1 16,59%, IoU 9,97%, 17/19 evaluables (6 series) |
+| `(1,3]` | F1 44,68%, IoU 31,43%, 6/6 evaluables (5 series) | F1 17,63%, IoU 10,35%, 6/6 evaluables (5 series) |
+
+No hay soporte de test en `(3,7]`, `(7,14]` ni `(14,+inf)`: el conjunto de test solo cubre
+hasta tres días. Las métricas globales de las tablas anteriores sí incluyen todas las
+muestras únicas del conjunto.
+
+La CV diagnóstica `prop_cems_diag_v4_integrity` usa su propio dataset, su propia semilla y su
+propio umbral congelado (0,20, con dispersión 0,30) y obtiene 9,43% contra ambas etiquetas
+sobre 23/25 muestras; al cambiar etiqueta, umbral y subconjunto, **no es comparable
+directamente** con las tablas anteriores.
+
+Cómo leerlo:
+
+- **El número publicable de propagación es 14,80%**, no 36,51%. El segundo mide desempeño
+  contra una etiqueta que incluye quemado no detectado.
+- Contra el crecimiento real, el modelo está por encima de B1 (7,30%) y del trivial
+  (8,42%), pero las diferencias siguen siendo modestas y el test contiene solo 7 series y
+  25 muestras.
+- **Recall 82,3% con precisión 9,9%**: el modelo acierta *dónde* se va a quemar, pero
+  sobreestima la anchura del frente.
+- **El umbral no es estable**: los óptimos por fold van de 0,10 a 0,50 y el entrenamiento
+  avisa. El umbral congelado (mediana, 0,10) es poco fiable; los números de test hay que
+  leerlos con esa reserva.
+- **El arranque en frío no está representado**: no se publica un desempeño para ese
+  escenario y no se fabrica una muestra artificial.
+
+Las cifras de las versiones anteriores del dataset están **sustituidas** por estas. La
+comparación con ellas no es válida: el dataset anterior tenía la ventana temporal anclada a
+una adquisición distinta de `f`, sus etiquetas no correspondían a la definición de quemado
+nuevo y su índice contenía entradas duplicadas. El run `prop_v4` queda marcado como
+**histórico y no publicable** (`checkpoints/khaen_prop_v4_20261115_210453/historico.json`) y
+las herramientas avisan cuando se le pide evaluar con él.
+
+### Cómo reproducir el diagnóstico
+
+```bash
+# 1. Regenerar el dataset (guarda ya las dos etiquetas)
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+
+# 2. Ver los números contra las dos etiquetas y el trivial
+#    (por defecto, umbral 0,50)
+uv run --extra rocm python scripts/evaluate_baselines.py
+
+# 2b. Los mismos baselines medidos al umbral operativo del run, que es como
+#     se comparan con el modelo (mismo umbral, mismas muestras evaluables)
+uv run --extra rocm python scripts/evaluate_baselines.py \
+      --operational-threshold-from checkpoints/<run>
+
+# 3. Reevaluar un run existente sin reentrenar
+uv run --extra rocm python scripts/train_propagation.py --eval-only checkpoints/<run>
+
+# 3b. Auditar la integridad y el inventario del dataset canónico
+uv run --extra rocm python scripts/audit_dataset_integrity.py \
+      --index data/processed/dataset_index.json \
+      --output runs/dataset_integrity_production.json
+
+# 4. Dataset y entrenamiento con la etiqueta de referencia (diagnóstico)
+uv run --extra rocm python scripts/build_pytorch_dataset.py --target-mode cems \
+      --samples-out data/processed_target_cems/samples \
+      --index-out data/processed_target_cems/dataset_index.json
+uv run --extra rocm python scripts/train_propagation.py --epochs 15 --seed 42 \
+      --index data/processed_target_cems/dataset_index.json --tag prop_cems_diag_v4_integrity
+```
+
+### Artefactos canónicos y sus sumas de verificación
+
+`artefactos/canonicos.json` registra la huella de los dos índices de dataset, del umbral
+operativo y de cada checkpoint del run canónico. Se comprueba con:
+
+```bash
+uv run --extra rocm python scripts/verify_canonical_artifacts.py
+```
+
+El script recalcula las sumas y las contrasta con el manifiesto; si algo ha cambiado, lo
+informa y devuelve código de error. Para regenerar el manifiesto tras producir nuevos
+artefactos: `--write`.
+
+| Artefacto | Huella de contenido (SHA-256) |
+|---|---|
+| Índice de producción (`data/processed/dataset_index.json`) | `0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2` |
+| Índice de referencia (`data/processed_target_cems/dataset_index.json`) | `aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd` |
+
+La **huella de contenido** no depende de la cabecera temporal del índice: dos regeneraciones
+del mismo dataset producen la misma huella aunque el fichero cambie en `generated_at`. La
+**huella de fichero** sí cambia con cada regeneración, y por eso es la que permite localizar
+el índice exacto con el que se entrenó un run concreto (`dataset_index_sha256` en
+`operational_threshold.json`).
+
+### Ojo con comparar etiquetas distintas
+
+**Un F1 de una etiqueta no se compara con un F1 de otra.** Cada etiqueta tiene su escala
+mínima (el trivial "todo quemado"), que es la referencia con la que hay que leerlo.
+Por eso `evaluate_baselines.py` imprime siempre el trivial al lado.
+
+**Y un F1 a un umbral no se compara con un F1 a otro umbral.** `evaluate_baselines.py`
+puede evaluar a cualquier umbral, pero para comparar con el modelo hay que usar el
+**umbral operativo congelado** (0,10 en el run canónico). El umbral también determina qué
+píxeles de la verdad cuentan como quemado y, por tanto, qué muestras son evaluables. La
+opción `--operational-threshold-from <dir_de_checkpoints>` aplica a los baselines el mismo
+umbral y el mismo subconjunto que el modelo. La tabla de la sección anterior está medida al
+umbral operativo para todos.
+
+### Qué cuenta como evaluable, y qué significan las máscaras
+
+Las dos máscaras del paquete de muestra (`mask` y `mask_cems`) usan la **misma codificación
+canónica**: `1` = píxel evaluable, `255` = píxel ignorado (no observado en la ronda). Es la
+convención que emite el rasterizador CEMS y la que espera la visualización, donde las zonas
+`255` se atenúan en el panel.
+
+Una **muestra es evaluable** cuando su métrica es informativa, es decir cuando la verdad
+contiene quemado por encima del umbral de evaluación. Si no lo hay, el F1 es `NaN`: no es un
+0, es "no se puede medir". Por eso los informes informan de los tres números:
+
+- **Series evaluables**: cuántas series han podido medirse (el promedio es por evento).
+- **Muestras evaluables**: cuántas muestras del conjunto tienen métrica informativa.
+- **Total**: cuántas muestras había en el conjunto evaluado.
+
+Un subconjunto con pocas muestras evaluables está inflando su promedio por evento, así que
+el recuento es parte del número, no un detalle del informe. Cuando una muestra no tiene
+ronda CEMS previa, su validez común es íntegramente `255` y su métrica contra la etiqueta de
+referencia no es informativa: cuenta como no evaluable, no como un cero.
+
+Medido sobre los conjuntos canónicos al umbral operativo 0,10:
+
+| Conjunto | Etiqueta | Series evaluables | Muestras evaluables |
+|---|---|---|---|
+| Validación (folds 0-4, 270 muestras) | De ensamblaje | 33/33 | 256/270 |
+| Validación (folds 0-4, 270 muestras) | De referencia | 33/33 | 238/270 |
+| Test (fold -1, 25 muestras) | De ensamblaje | 7/7 | 24/25 |
+| Test (fold -1, 25 muestras) | De referencia | 7/7 | 23/25 |
+
+### Sobre la comparación con TMB-S3 upstream
+
+TMB-S3 upstream evalúa **detección** de quemado: mira imágenes donde el fuego ya está y
+etiqueta qué está quemado, con etiquetas derivadas de MCD64A1 y una regla "OR" que infla el
+área un 34%. Su F1 de 69,45 / IoU 59,81 es de **su propio test set y sus propias etiquetas**.
+
+Este proyecto evalúa **pronóstico**: predecir qué se quemará en las próximas horas, con la
+etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que el 69,45 no es una
+meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **el trivial "todo
+quemado"** y **B1**, medidos al mismo umbral operativo que el modelo (16,29% y 15,94%
+contra la etiqueta de ensamblaje; 8,42% y 7,30% contra la referencia), porque usan la misma
+información disponible que el modelo.
+
+Donde el número de upstream sí es útil es como referencia de la **calidad del generador de
+cicatriz**, que es el techo de la entrada `x_scar` y, por tanto, el techo de la etiqueta de
+ensamblaje.

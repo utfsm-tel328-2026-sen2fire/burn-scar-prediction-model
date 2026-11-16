@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-11-16T16:45:03Z",
+  "datasets": {
+    "production": {
+      "index": "data/processed/dataset_index.json",
+      "available": true,
+      "file_sha256": "9871310c22e7411706f6126cfcfd2e19875a6c778c43168e78243760a2828d0b",
+      "content_sha256": "0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2",
+      "generator_version": "c2f8d282297d",
+      "schema_version": 2
+    },
+    "reference_cems": {
+      "index": "data/processed_target_cems/dataset_index.json",
+      "available": true,
+      "file_sha256": "18160c0a8f921599c7b58370794a54f0f3b899fe28b378982b009d71bbb8aff6",
+      "content_sha256": "aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd",
+      "generator_version": "c2f8d282297d",
+      "schema_version": 2
+    }
+  },
+  "runs": {
+    "prop_v4_integrity": {
+      "checkpoint_dir": "checkpoints/khaen_prop_v4_integrity_20261116_134016",
+      "available": true,
+      "checkpoints": [
+        {
+          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_0.pt",
+          "file_sha256": "8dc10cb1925aa72f33a2ee2f11da67f3c83b5119dc44136d165432aeb50a46bd"
+        },
+        {
+          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_1.pt",
+          "file_sha256": "c8d992b6f7011f4a2be3c47454b951489b6e63420e9bc178f616f97114f71823"
+        },
+        {
+          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_2.pt",
+          "file_sha256": "0cd1fe7d711422f5712ccfe90b1f2872eeacf9e51048036d3b6afae7c193d633"
+        },
+        {
+          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_3.pt",
+          "file_sha256": "05e09607a3c09eac1218977b7e779bad1838d780287b1c1a6aead52f31eed723"
+        },
+        {
+          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_4.pt",
+          "file_sha256": "04b636810b0e9607ed4bee92db0e72ea65810e92407883e812e8ad83380e113a"
+        }
+      ],
+      "operational_threshold_file": "checkpoints/khaen_prop_v4_integrity_20261116_134016/operational_threshold.json",
+      "operational_threshold_sha256": "8ec539fd1a6373806a085d80d3221455629dc1dec10abc892fbf0e23e9f0b255",
+      "operational_threshold_value": 0.1,
+      "threshold_spread": 0.4,
+      "seed": 42,
+      "dataset_index_sha256": "9871310c22e7411706f6126cfcfd2e19875a6c778c43168e78243760a2828d0b",
+      "dataset_content_sha256": "0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2",
+      "dataset_generator_version": "c2f8d282297d"
+    },
+    "prop_cems_diag_v4_integrity": {
+      "checkpoint_dir": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230",
+      "available": true,
+      "checkpoints": [
+        {
+          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_0.pt",
+          "file_sha256": "fc0ea0975a876104618d80fba01d55ad5b06001b0c2780b3eabaa01394682077"
+        },
+        {
+          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_1.pt",
+          "file_sha256": "92148384e1c70ba0f01ac80577977c4041b867e217a75b4b982f52ed5cd305e9"
+        },
+        {
+          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_2.pt",
+          "file_sha256": "b0d7091da982e34176fdb0fb7b391325517c2eb411e2043daa2720bdd117708f"
+        },
+        {
+          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_3.pt",
+          "file_sha256": "e0d9ae8be124d26b224542ebd02599af5f1d57c289a1ec0fea6eb8b3067eb2b2"
+        },
+        {
+          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_4.pt",
+          "file_sha256": "180eed8c5b1d2a84ec410628ecb6573adb4644e8f7f6b7baac0ab1f40abcbc07"
+        }
+      ],
+      "operational_threshold_file": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/operational_threshold.json",
+      "operational_threshold_sha256": "c2dae648d47798e0a64f0360377c7ea6741e22d7b485cb6e7beefad6c6f10d3b",
+      "operational_threshold_value": 0.2,
+      "threshold_spread": 0.30000000000000004,
+      "seed": 42,
+      "dataset_index_sha256": "18160c0a8f921599c7b58370794a54f0f3b899fe28b378982b009d71bbb8aff6",
+      "dataset_content_sha256": "aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd",
+      "dataset_generator_version": "c2f8d282297d"
+    }
+  }
+}

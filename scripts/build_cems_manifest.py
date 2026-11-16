@@ -62,6 +62,94 @@ def parse_iso(ts_str: str) -> dt.datetime | None:
     return None
 
 
+def canonical_acquisition_key(satellite: str, instant: dt.datetime) -> str:
+    """Clave canónica de una adquisición OLCI: satélite y segundo UTC."""
+    return f"{satellite}:{instant.strftime('%Y%m%dT%H%M%S')}"
+
+
+def deduplicate_olci_scenes(scenes: list[dict]) -> list[dict]:
+    """
+    Colapsa productos CDSE que representan la misma adquisición.
+
+    La selección es determinista por identificador de producto y todos los IDs
+    alternativos quedan en `product_ids` para auditoría.
+    """
+    groups: dict[str, list[dict]] = {}
+    for scene in scenes:
+        key = canonical_acquisition_key(scene["satellite"], scene["dt"])
+        groups.setdefault(key, []).append(scene)
+
+    canonical: list[dict] = []
+    for key in sorted(groups):
+        candidates = sorted(groups[key], key=lambda scene: str(scene.get("id") or ""))
+        representative = dict(candidates[0])
+        product_ids = sorted(str(scene.get("id") or "") for scene in candidates)
+        representative["acquisition_key"] = key
+        representative["product_ids"] = product_ids
+        representative["collapsed_product_ids"] = [
+            product_id for product_id in product_ids if product_id != representative["id"]
+        ]
+        canonical.append(representative)
+
+    canonical.sort(key=lambda scene: (scene["dt"], scene["acquisition_key"]))
+    return canonical
+
+
+def deduplicate_manifest_samples(series_list: list[dict]) -> dict[str, int]:
+    """Colapsa entradas de muestra repetidas dentro de cada serie."""
+    products_total = 0
+    acquisitions_unique = 0
+    acquisitions_collapsed = 0
+    products_collapsed = 0
+
+    for series in series_list:
+        grouped: dict[str, list[dict]] = {}
+        series_products_total = len(series.get("samples", []))
+        for sample in series.get("samples", []):
+            sample_id = str(sample.get("sample_id"))
+            grouped.setdefault(sample_id, []).append(sample)
+            products_total += 1
+
+        # Se conserva el orden de aparición (cronológico) y, dentro de cada
+        # `sample_id`, se elige un representante determinista.
+        canonical_samples = []
+        for sample_id, candidates in grouped.items():
+            chosen = sorted(
+                candidates,
+                key=lambda sample: str(sample.get("frame_scene_id") or sample.get("id") or ""),
+            )[0]
+            canonical_samples.append(chosen)
+            products_collapsed += len(candidates) - 1
+
+        series["samples"] = canonical_samples
+        acquisitions_unique += len(canonical_samples)
+        if len(canonical_samples) < series_products_total:
+            acquisitions_collapsed += 1
+
+    return {
+        "products_total": products_total,
+        "acquisitions_unique": acquisitions_unique,
+        "acquisitions_collapsed": acquisitions_collapsed,
+        "products_collapsed": products_collapsed,
+    }
+
+
+def summarize_olci_catalog(scenes: list[dict]) -> dict[str, int]:
+    """Resumen auditable de productos CDSE frente a adquisiciones únicas."""
+    products_total = sum(len(scene.get("product_ids", [scene.get("id")])) for scene in scenes)
+    products_collapsed = sum(
+        len(scene.get("collapsed_product_ids", [])) for scene in scenes
+    )
+    return {
+        "products_total": products_total,
+        "acquisitions_unique": len(scenes),
+        "acquisitions_collapsed": sum(
+            bool(scene.get("collapsed_product_ids")) for scene in scenes
+        ),
+        "products_collapsed": products_collapsed,
+    }
+
+
 def wkt_to_poly_coords(wkt: str) -> list[tuple[float, float]] | None:
     """Extrae las coordenadas de un POLYGON WKT."""
     pairs = NUM_PAIR.findall(wkt)
@@ -122,8 +210,7 @@ def fetch_cdse_olci_scenes(
                 "acquisition_time": t_acq.isoformat(),
                 "dt": t_acq,
             })
-    scenes.sort(key=lambda s: s["dt"])
-    return scenes
+    return deduplicate_olci_scenes(scenes)
 
 
 def main() -> int:
@@ -360,6 +447,7 @@ def main() -> int:
         print(f"   - {sensor:<20}: {count:>3} rondas")
 
     # Guardar manifiesto
+    manifest_catalog_summary = deduplicate_manifest_samples(manifest_series)
     payload = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "summary": {
@@ -370,6 +458,7 @@ def main() -> int:
             "total_transitions": total_transitions,
             "sensor_change_transitions": transition_sensor_changes,
             "total_samples_olci": total_samples,
+            "olci_catalog": manifest_catalog_summary,
         },
         "sensor_distribution": sensor_counter,
         "series": manifest_series,
