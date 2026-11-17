@@ -90,6 +90,26 @@ def test_masked_loss_derives_pos_weight_from_batch_imbalance() -> None:
     assert float(loss_w) != pytest.approx(float(loss_auto), abs=1e-5)
 
 
+def test_tversky_and_max_pos_weight_penalize_false_positives_more() -> None:
+    """Con tversky_alpha > tversky_beta se penalizan más los falsos positivos que los falsos negativos."""
+    mask = torch.ones(1, 1, 10, 10, dtype=torch.uint8)
+    target = torch.zeros(1, 1, 10, 10)
+    target[:, :, 0:2, 0:2] = 1.0  # 4 píxeles reales
+
+    # Predicción con muchos falsos positivos (logits altos fuera del target)
+    logits_fp = torch.full((1, 1, 10, 10), -5.0)
+    logits_fp[:, :, 0:2, 0:2] = 5.0
+    logits_fp[:, :, 4:8, 4:8] = 5.0  # 16 FP
+
+    loss_fp_heavy = masked_bce_dice_loss(
+        logits_fp, target, mask, max_pos_weight=5.0, tversky_alpha=0.7, tversky_beta=0.3
+    )
+    loss_fn_heavy = masked_bce_dice_loss(
+        logits_fp, target, mask, max_pos_weight=5.0, tversky_alpha=0.3, tversky_beta=0.7
+    )
+    assert float(loss_fp_heavy) > float(loss_fn_heavy)
+
+
 def _fake_batch(*, with_burn: bool, with_reference: bool) -> dict:
     """Lote sintético con una muestra cuya verdad tiene quemado o está vacía."""
     B, T, H, W = 1, 7, 64, 64

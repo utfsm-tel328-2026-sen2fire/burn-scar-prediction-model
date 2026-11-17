@@ -9,6 +9,7 @@ import argparse
 import json
 import random
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -88,6 +89,9 @@ def evaluate_fold(
     val_loader: torch.utils.data.DataLoader,
     device: str,
     threshold: float = DEFAULT_THRESHOLD,
+    max_pos_weight: float = 50.0,
+    tversky_alpha: float = 0.5,
+    tversky_beta: float = 0.5,
 ) -> dict[str, float]:
     """
     Evalúa un fold promediando métricas por serie/evento (D10).
@@ -124,7 +128,14 @@ def evaluate_fold(
         mask = batch["mask"].to(device)
 
         logits = model(x_olci, x_dem, x_wc, x_scar, h_days)
-        loss = masked_bce_dice_loss(logits, target, mask)
+        loss = masked_bce_dice_loss(
+            logits,
+            target,
+            mask,
+            max_pos_weight=max_pos_weight,
+            tversky_alpha=tversky_alpha,
+            tversky_beta=tversky_beta,
+        )
         total_loss += float(loss.item())
         n_batches += 1
 
@@ -495,7 +506,14 @@ def train_fold(
 
             optimizer.zero_grad(set_to_none=True)
             logits = model(x_olci, x_dem, x_wc, x_scar, h_days)
-            loss = masked_bce_dice_loss(logits, target, mask)
+            loss = masked_bce_dice_loss(
+                logits,
+                target,
+                mask,
+                max_pos_weight=getattr(args, "max_pos_weight", 5.0),
+                tversky_alpha=getattr(args, "tversky_alpha", 0.7),
+                tversky_beta=getattr(args, "tversky_beta", 0.3),
+            )
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
@@ -505,7 +523,14 @@ def train_fold(
 
         scheduler.step()
         avg_train_loss = train_loss / max(1, n_batches)
-        val_res = evaluate_fold(model, val_loader, device=device)
+        val_res = evaluate_fold(
+            model,
+            val_loader,
+            device=device,
+            max_pos_weight=getattr(args, "max_pos_weight", 5.0),
+            tversky_alpha=getattr(args, "tversky_alpha", 0.7),
+            tversky_beta=getattr(args, "tversky_beta", 0.3),
+        )
 
         tracker.log_metrics(
             {
@@ -778,6 +803,29 @@ def main() -> int:
     parser.add_argument("--hidden-ch", type=int, default=32)
     parser.add_argument("--scar-corruption", type=float, default=0.15)
     parser.add_argument(
+        "--max-pos-weight",
+        type=float,
+        default=5.0,
+        help="Tope máximo para pos_weight en BCE (default: 5.0; antes 50.0)",
+    )
+    parser.add_argument(
+        "--tversky-alpha",
+        type=float,
+        default=0.7,
+        help="Peso de los falsos positivos (FP) en Tversky loss (default: 0.7; 0.5 = Soft Dice)",
+    )
+    parser.add_argument(
+        "--tversky-beta",
+        type=float,
+        default=0.3,
+        help="Peso de los falsos negativos (FN) en Tversky loss (default: 0.3; 0.5 = Soft Dice)",
+    )
+    parser.add_argument(
+        "--dedup-index",
+        action="store_true",
+        help="Deduplica temporalmente sample_id repetidos en el índice JSON si existen",
+    )
+    parser.add_argument(
         "--init-checkpoint",
         default=None,
         help="Ruta opcional al checkpoint preentrenado M-A (mcd_pretrained.pt) para iniciar el ajuste M-B.",
@@ -795,6 +843,27 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+    if args.dedup_index:
+        import atexit
+
+        raw_payload = json.loads(Path(args.index).read_text(encoding="utf-8"))
+        seen_ids: set[str] = set()
+        deduped_samples = []
+        for s in raw_payload.get("samples", []):
+            sid = str(s.get("sample_id"))
+            if sid not in seen_ids:
+                seen_ids.add(sid)
+                deduped_samples.append(s)
+        if len(deduped_samples) < len(raw_payload.get("samples", [])):
+            raw_payload["samples"] = deduped_samples
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", prefix="dedup_index_", delete=False, encoding="utf-8"
+            )
+            with tmp:
+                json.dump(raw_payload, tmp)
+            atexit.register(lambda p=Path(tmp.name): p.unlink(missing_ok=True))
+            args.index = tmp.name
+
     index_payload = json.loads(Path(args.index).read_text(encoding="utf-8"))
     set_reproducibility_seed(args.seed)
 
@@ -804,6 +873,10 @@ def main() -> int:
     print("=" * 72)
     print("ENTRENAMIENTO DE MODELO DE PROPAGACIÓN (ConvLSTM + SegFormer)")
     print(f"Dispositivo: {args.device} | Folds: {args.folds} | Épocas: {args.epochs}")
+    print(
+        f"Pérdida: max_pos_weight={args.max_pos_weight} | "
+        f"Tversky(alpha={args.tversky_alpha}, beta={args.tversky_beta})"
+    )
     print("=" * 72)
 
     t0 = time.time()

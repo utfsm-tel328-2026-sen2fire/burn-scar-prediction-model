@@ -47,25 +47,31 @@ El detalle completo, con las alternativas descartadas y el porqué, está en
 
 ## Estado
 
-**Modelo entrenado y dataset canónico regenerado.** El dataset vigente contiene **295
-muestras únicas en 40 series**, con horizontes continuos, inventario de calidad y capas
-estáticas validadas. El run canónico es `prop_v4_integrity` (semilla 42), con umbral
-operativo congelado en 0,10.
+**Modelos entrenados (`M-A`, `M-B`, Tversky y desde cero) y dataset canónico regenerado.**
+El dataset vigente contiene **296 muestras únicas en 40 series**, con horizontes continuos,
+inventario de calidad y capas estáticas validadas.
 
-Conjunto de test (fold -1, 25 muestras, 7 series), modelo y baselines al mismo umbral y sobre
-el mismo subconjunto:
+Conjunto de test (fold -1, 25 muestras, 7 series), todos los modelos y baselines evaluados
+bajo el mismo protocolo y umbral común (`0,10`), más el umbral operativo CV (`0,20`):
 
-| Modelo | F1 (ensamblaje) | F1 (referencia, propagación real) |
-|---|---:|---:|
-| B1 dilatación radial | 15,94% | 7,30% |
-| Trivial "todo quemado" | 16,29% | 8,42% |
-| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **14,80%** |
+| Modelo | Umbral | F1 (ensamblaje) | F1 (referencia, propagación real) | Precisión (ensamblaje) |
+|---|---:|---:|---:|---:|
+| B0 persistencia | 0,10 | 0,00% | 0,00% | 0,00% |
+| B1 dilatación radial | 0,10 | 15,94% | 7,30% | 19,11% |
+| Trivial "todo quemado" | 0,10 | 16,29% | 8,42% | 9,41% |
+| **M-A** (`mcd_pretrained`, cero-disparo sin CEMS) | 0,10 | **19,71%** | **10,61%** | 14,05% |
+| **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | **30,98%** | **11,80%** | 29,89% |
+| **M-B + Tversky** (`prop_m_b_tversky`, $\alpha=0,7, \beta=0,3, w_{\max}=5$) | 0,10 | **32,90%** | **10,08%** | **39,53%** |
+| **Modelo de producción** (`prop_v4_integrity`, umbral común) | 0,10 | **36,46%** | **14,68%** | 28,40% |
+| **Modelo de producción** (`prop_v4_integrity`, umbral operativo CV) | 0,20 | **39,34%** | **10,59%** | 33,12% |
 
-El número publicable de propagación es el de la **referencia** (14,80%): la etiqueta de
-ensamblaje incluye quemado que TMB-S3 no detectó. El arranque en frío **no está
-representado** y no se publica un desempeño para él; las bandas de horizonte se reportan solo
-como diagnóstico y no filtran nada. La tabla completa, con IoU, precisión, recall, soporte
-por banda y recuentos evaluables, está en
+El número publicable de propagación es el de la **referencia** (**14,68%** a umbral común
+0,10): la etiqueta de ensamblaje incluye quemado que TMB-S3 no detectó. `M-A` demuestra
+transferencia pura en cero-disparo superando a `B1` y al trivial sin haber visto CEMS; `M-B + Tversky`
+estabiliza el umbral entre folds (`0,10–0,20`) y eleva la precisión al **39,53%**. El arranque
+en frío **no está representado** y no se publica un desempeño para él; las bandas de horizonte
+se reportan solo como diagnóstico y no filtran nada. La tabla completa, con IoU, precisión,
+recall, soporte por banda y recuentos evaluables, está en
 [`docs/operacion.md`](docs/operacion.md) §9.
 
 El run anterior `prop_v4` queda como **histórico y no publicable**: su índice tenía entradas
@@ -87,18 +93,18 @@ comparables con las del run canónico.
 
 > ¿No sabes qué es una AOI, una delineación o el NBR? → [Glosario](docs/dataset.md#1-glosario).
 
-## Próximos pasos
+## Próximos pasos (v2 / trabajo futuro)
 
 1. Ampliar el conjunto y recuperar `EMSR785_AOI01` con una fuente estática que no devuelva
    WorldCover vacío.
 2. Obtener observaciones genuinas de arranque en frío o mantenerlo explícitamente fuera del
    alcance de desempeño.
-3. Implementar B2 (advección por viento) y comparar contra el mismo conjunto y umbral.
-4. Evaluar la calibración de las salidas y la estabilidad del umbral por fold y horizonte.
-5. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
+3. Incorporar canales meteorológicos de viento (ERA5/GFS) e implementar B2 (advección por
+   viento) en la v2 para comparar contra el mismo conjunto y umbral.
+4. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
 
-La auditoría reproducible del dataset y la procedencia de los runs están en
-`scripts/audit_dataset_integrity.py` y en `operational_threshold.json`, respectivamente.
+La auditoría reproducible del dataset, el barrido de umbrales y la procedencia de los runs están en
+`scripts/audit_dataset_integrity.py`, `scripts/sweep_thresholds.py` y `operational_threshold.json`, respectivamente.
 
 ## Estructura
 

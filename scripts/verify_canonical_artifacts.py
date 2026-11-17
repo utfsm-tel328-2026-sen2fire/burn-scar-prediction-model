@@ -43,7 +43,7 @@ CANONICAL_RUNS = (
 
 def find_run_dir(label: str) -> Path | None:
     """Directorio del run canónico más reciente con la etiqueta dada."""
-    candidates = sorted(Path("checkpoints").glob(f"khaen_{label}_*"))
+    candidates = sorted(Path("checkpoints").glob(f"*_{label}_*"))
     return candidates[-1] if candidates else None
 
 
