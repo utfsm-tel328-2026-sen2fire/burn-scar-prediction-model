@@ -6,7 +6,9 @@ Visualización post-entrenamiento de checkpoints del modelo de propagación
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+import tempfile
 from collections import defaultdict
 from collections.abc import Sequence
 from pathlib import Path
@@ -127,6 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="cuda" if torch.cuda.is_available() else "cpu",
         help="Dispositivo de inferencia (cuda o cpu)",
     )
+    parser.add_argument(
+        "--dedup-index",
+        action="store_true",
+        help="Deduplica temporalmente sample_id repetidos en el índice JSON si existen",
+    )
     return parser
 
 
@@ -145,12 +152,37 @@ def run_visualization(
         device=args.device,
     )
 
-    _, val_loader = get_cv_dataloaders(
-        val_fold=resolved_fold,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        index_path=args.index,
-    )
+    resolved_index = args.index
+    tmp_index_path: Path | None = None
+    if args.dedup_index:
+        raw_payload = json.loads(Path(args.index).read_text(encoding="utf-8"))
+        seen_ids: set[str] = set()
+        deduped = []
+        for s in raw_payload.get("samples", []):
+            sid = str(s.get("sample_id"))
+            if sid not in seen_ids:
+                seen_ids.add(sid)
+                deduped.append(s)
+        if len(deduped) < len(raw_payload.get("samples", [])):
+            raw_payload["samples"] = deduped
+            tmp = tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", prefix="dedup_index_", delete=False, encoding="utf-8"
+            )
+            with tmp:
+                json.dump(raw_payload, tmp)
+            tmp_index_path = Path(tmp.name)
+            resolved_index = tmp.name
+
+    try:
+        _, val_loader = get_cv_dataloaders(
+            val_fold=resolved_fold,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            index_path=resolved_index,
+        )
+    finally:
+        if tmp_index_path is not None and tmp_index_path.exists():
+            tmp_index_path.unlink()
 
     evaluated = evaluate_validation_samples(
         model,

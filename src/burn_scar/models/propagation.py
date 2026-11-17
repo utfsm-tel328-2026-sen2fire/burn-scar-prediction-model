@@ -124,15 +124,21 @@ def masked_bce_dice_loss(
     pos_weight: float | None = None,
     dice_weight: float = 0.5,
     max_pos_weight: float = 50.0,
+    tversky_alpha: float = 0.5,
+    tversky_beta: float = 0.5,
 ) -> Tensor:
     """
-    Pérdida BCEWithLogits + Soft Dice calculada solo en píxeles válidos (mask == 1).
+    Pérdida BCEWithLogits + Soft Dice / Tversky calculada solo en píxeles válidos (mask == 1).
 
     Args:
         pos_weight: peso de la clase positiva. Si es None se deriva del desbalance
             real del lote (píxeles válidos no quemados / píxeles válidos quemados),
             acotado a [1, max_pos_weight]. Con ~5% de píxeles quemados, un valor
             fijo bajo hace que el modelo prediga ausencia de quemado (recall ~0).
+        tversky_alpha: peso de los falsos positivos (FP) en el término de solapamiento.
+            Con alpha=0.5, beta=0.5 equivale exactamente a Soft Dice. Con alpha > beta
+            (p. ej. 0.7 / 0.3) penaliza más las zonas marcadas erróneamente como quemadas.
+        tversky_beta: peso de los falsos negativos (FN) en el término de solapamiento.
     """
     valid = (mask == 1).float()
     valid_count = valid.sum().clamp(min=1.0)
@@ -153,7 +159,13 @@ def masked_bce_dice_loss(
     probs = torch.sigmoid(logits) * valid
     tgt_valid = target * valid
     intersection = (probs * tgt_valid).sum()
-    union = probs.sum() + tgt_valid.sum()
-    dice_loss = 1.0 - (2.0 * intersection + 1e-6) / (union + 1e-6)
+    if tversky_alpha == 0.5 and tversky_beta == 0.5:
+        union = probs.sum() + tgt_valid.sum()
+        overlap_loss = 1.0 - (2.0 * intersection + 1e-6) / (union + 1e-6)
+    else:
+        fp = (probs * (1.0 - tgt_valid) * valid).sum()
+        fn = ((1.0 - probs) * tgt_valid).sum()
+        denom = intersection + tversky_alpha * fp + tversky_beta * fn
+        overlap_loss = 1.0 - (intersection + 1e-6) / (denom + 1e-6)
 
-    return bce + dice_weight * dice_loss
+    return bce + dice_weight * overlap_loss

@@ -1,90 +1,90 @@
 {
-  "generated_at": "2026-11-16T16:45:03Z",
+  "generated_at": "2026-11-17T20:11:21Z",
   "datasets": {
     "production": {
       "index": "data/processed/dataset_index.json",
       "available": true,
-      "file_sha256": "9871310c22e7411706f6126cfcfd2e19875a6c778c43168e78243760a2828d0b",
-      "content_sha256": "0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2",
+      "file_sha256": "b866526ae8c6d5ab0c12277facae919bc0055b88fb1a37a3014494ca31fbdf55",
+      "content_sha256": "34d562db30f59dc74fc875a6cefd2a79c61c6f474091ebaad92a8c5901faa75c",
       "generator_version": "c2f8d282297d",
       "schema_version": 2
     },
     "reference_cems": {
       "index": "data/processed_target_cems/dataset_index.json",
       "available": true,
-      "file_sha256": "18160c0a8f921599c7b58370794a54f0f3b899fe28b378982b009d71bbb8aff6",
-      "content_sha256": "aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd",
+      "file_sha256": "4a1545a2cb680e5669f7e314ed740b99f1657f526558060d86c0ebb080134794",
+      "content_sha256": "793121e1ac12ad6062c7c815639c402f1d93d2425a7d0e077beeea77420cc89c",
       "generator_version": "c2f8d282297d",
       "schema_version": 2
     }
   },
   "runs": {
     "prop_v4_integrity": {
-      "checkpoint_dir": "checkpoints/khaen_prop_v4_integrity_20261116_134016",
+      "checkpoint_dir": "checkpoints/antonio_prop_v4_integrity_20261117_165923",
       "available": true,
       "checkpoints": [
         {
-          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_0.pt",
-          "file_sha256": "8dc10cb1925aa72f33a2ee2f11da67f3c83b5119dc44136d165432aeb50a46bd"
+          "path": "checkpoints/antonio_prop_v4_integrity_20261117_165923/best_fold_0.pt",
+          "file_sha256": "dcc80114f3b2e88abe6521bc03417fae453e68e0762865e44d5ac771911fa04f"
         },
         {
-          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_1.pt",
-          "file_sha256": "c8d992b6f7011f4a2be3c47454b951489b6e63420e9bc178f616f97114f71823"
+          "path": "checkpoints/antonio_prop_v4_integrity_20261117_165923/best_fold_1.pt",
+          "file_sha256": "f4de8be7afd2b559dff7f590a31d809a6f04e9fdfd7f14b4fb5f89467b1048ea"
         },
         {
-          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_2.pt",
-          "file_sha256": "0cd1fe7d711422f5712ccfe90b1f2872eeacf9e51048036d3b6afae7c193d633"
+          "path": "checkpoints/antonio_prop_v4_integrity_20261117_165923/best_fold_2.pt",
+          "file_sha256": "e485439a00e3195d8f3a1983124485d58279e7366840c50a97eec0fae294b79e"
         },
         {
-          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_3.pt",
-          "file_sha256": "05e09607a3c09eac1218977b7e779bad1838d780287b1c1a6aead52f31eed723"
+          "path": "checkpoints/antonio_prop_v4_integrity_20261117_165923/best_fold_3.pt",
+          "file_sha256": "4243e48a5119921ab310f0a02a63d92a955eb632082c598792e0f980ae4dbe08"
         },
         {
-          "path": "checkpoints/khaen_prop_v4_integrity_20261116_134016/best_fold_4.pt",
-          "file_sha256": "04b636810b0e9607ed4bee92db0e72ea65810e92407883e812e8ad83380e113a"
+          "path": "checkpoints/antonio_prop_v4_integrity_20261117_165923/best_fold_4.pt",
+          "file_sha256": "426ab55c0b856ff8f1773d6e33708bc91daffb687201f47a5255513451d4d22d"
         }
       ],
-      "operational_threshold_file": "checkpoints/khaen_prop_v4_integrity_20261116_134016/operational_threshold.json",
-      "operational_threshold_sha256": "8ec539fd1a6373806a085d80d3221455629dc1dec10abc892fbf0e23e9f0b255",
-      "operational_threshold_value": 0.1,
-      "threshold_spread": 0.4,
+      "operational_threshold_file": "checkpoints/antonio_prop_v4_integrity_20261117_165923/operational_threshold.json",
+      "operational_threshold_sha256": "5d1ef7b04a1f8c5a06302d6b0ca8b4854a77c4b362172f716a3aeffbe284cf5f",
+      "operational_threshold_value": 0.2,
+      "threshold_spread": 0.1,
       "seed": 42,
-      "dataset_index_sha256": "9871310c22e7411706f6126cfcfd2e19875a6c778c43168e78243760a2828d0b",
-      "dataset_content_sha256": "0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2",
+      "dataset_index_sha256": "b866526ae8c6d5ab0c12277facae919bc0055b88fb1a37a3014494ca31fbdf55",
+      "dataset_content_sha256": "34d562db30f59dc74fc875a6cefd2a79c61c6f474091ebaad92a8c5901faa75c",
       "dataset_generator_version": "c2f8d282297d"
     },
     "prop_cems_diag_v4_integrity": {
-      "checkpoint_dir": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230",
+      "checkpoint_dir": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525",
       "available": true,
       "checkpoints": [
         {
-          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_0.pt",
-          "file_sha256": "fc0ea0975a876104618d80fba01d55ad5b06001b0c2780b3eabaa01394682077"
+          "path": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525/best_fold_0.pt",
+          "file_sha256": "6a0ea2c994e109d94a29762c4a54d233ace20a68ddfaa6d38159a8bd42cf8033"
         },
         {
-          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_1.pt",
-          "file_sha256": "92148384e1c70ba0f01ac80577977c4041b867e217a75b4b982f52ed5cd305e9"
+          "path": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525/best_fold_1.pt",
+          "file_sha256": "55c5dba2e800949379dc22efadef42867e49e1ef49d7b7c18e44b74d4c12b93d"
         },
         {
-          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_2.pt",
-          "file_sha256": "b0d7091da982e34176fdb0fb7b391325517c2eb411e2043daa2720bdd117708f"
+          "path": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525/best_fold_2.pt",
+          "file_sha256": "60ae6ed6e276afbcd762ddae7f7d71753d4817752d386eef0481d2ba2d554d73"
         },
         {
-          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_3.pt",
-          "file_sha256": "e0d9ae8be124d26b224542ebd02599af5f1d57c289a1ec0fea6eb8b3067eb2b2"
+          "path": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525/best_fold_3.pt",
+          "file_sha256": "bae4dd7fc345f55993a5f8fd935368efc6830514fc0083c13ae277d464280f26"
         },
         {
-          "path": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/best_fold_4.pt",
-          "file_sha256": "180eed8c5b1d2a84ec410628ecb6573adb4644e8f7f6b7baac0ab1f40abcbc07"
+          "path": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525/best_fold_4.pt",
+          "file_sha256": "c661a8a5fa66a9296181c537a88d620b7ae249ed2a7f624440309d706af936e6"
         }
       ],
-      "operational_threshold_file": "checkpoints/khaen_prop_cems_diag_v4_integrity_20261116_134230/operational_threshold.json",
-      "operational_threshold_sha256": "c2dae648d47798e0a64f0360377c7ea6741e22d7b485cb6e7beefad6c6f10d3b",
-      "operational_threshold_value": 0.2,
+      "operational_threshold_file": "checkpoints/antonio_prop_cems_diag_v4_integrity_20261117_170525/operational_threshold.json",
+      "operational_threshold_sha256": "5cdcd2d75d99075fa9a0258712463b83ac3035bd7b8bfc6e710236a5aa932ebe",
+      "operational_threshold_value": 0.1,
       "threshold_spread": 0.30000000000000004,
       "seed": 42,
-      "dataset_index_sha256": "18160c0a8f921599c7b58370794a54f0f3b899fe28b378982b009d71bbb8aff6",
-      "dataset_content_sha256": "aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd",
+      "dataset_index_sha256": "4a1545a2cb680e5669f7e314ed740b99f1657f526558060d86c0ebb080134794",
+      "dataset_content_sha256": "793121e1ac12ad6062c7c815639c402f1d93d2425a7d0e077beeea77420cc89c",
       "dataset_generator_version": "c2f8d282297d"
     }
   }

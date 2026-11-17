@@ -354,7 +354,6 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
 - La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
 
-<<<<<<< HEAD
 ### Preentrenamiento con MCD64A1 (Etapa M-A → Ajuste M-B)
 
 Para incorporar datos de preentrenamiento de `MODIS/061/MCD64A1` (sin solapamiento con los
@@ -383,7 +382,6 @@ uv run --extra rocm python scripts/train_propagation.py \
       --tag prop_m_b_finetuned
 ```
 
-=======
 ## 9. Qué etiqueta se está midiendo (diagnóstico del target)
 
 El dataset guarda **dos etiquetas** por muestra:
@@ -631,4 +629,3 @@ información disponible que el modelo.
 Donde el número de upstream sí es útil es como referencia de la **calidad del generador de
 cicatriz**, que es el techo de la entrada `x_scar` y, por tanto, el techo de la etiqueta de
 ensamblaje.
->>>>>>> origin
