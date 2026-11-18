@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
-from burn_scar.dataset import BurnScarDataset
+
 from burn_scar.baselines import (
     BaselineAllBurned,
     BaselineB0Persistence,
@@ -30,6 +30,7 @@ from burn_scar.baselines import (
     compact_series_metrics,
     compute_metrics_numpy,
 )
+from burn_scar.dataset import BurnScarDataset
 from burn_scar.quality import (
     describe_evaluated_set,
     file_sha256,

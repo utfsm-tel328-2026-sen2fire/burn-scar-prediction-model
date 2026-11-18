@@ -9,10 +9,11 @@ el canal de cicatriz conocida `scar` en el frame f:
 from __future__ import annotations
 
 from pathlib import Path
+
 import torch
 import torch.nn as nn
-from torch import Tensor
 from safetensors.torch import load_file
+from torch import Tensor
 
 from burn_scar.models.convlstm import ConvLSTMCell, TemporalContextModel
 from burn_scar.models.segformer import MiniSegFormer

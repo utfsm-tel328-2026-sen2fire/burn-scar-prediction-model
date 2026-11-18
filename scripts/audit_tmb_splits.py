@@ -117,7 +117,7 @@ def fetch_tmb_manifest() -> list:
     local_cache = "data/tmb_manifest.json"
     if os.path.exists(local_cache):
         try:
-            with open(local_cache, "r", encoding="utf-8") as fh:
+            with open(local_cache, encoding="utf-8") as fh:
                 rows = json.load(fh)
                 if rows:
                     return rows

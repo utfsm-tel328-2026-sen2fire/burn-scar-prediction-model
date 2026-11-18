@@ -15,7 +15,7 @@ SAMPLES_DIR = Path("data/processed/samples")
 def _load_index() -> dict:
     if not INDEX_PATH.exists():
         pytest.skip("Dataset index no generado")
-    with open(INDEX_PATH, "r", encoding="utf-8") as f:
+    with open(INDEX_PATH, encoding="utf-8") as f:
         return json.load(f)
 
 

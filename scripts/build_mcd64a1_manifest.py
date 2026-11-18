@@ -84,7 +84,7 @@ def load_cems_exclusion_records(
 
     p_cems = Path(cems_manifest_path)
     if p_cems.exists():
-        with open(p_cems, "r", encoding="utf-8") as f:
+        with open(p_cems, encoding="utf-8") as f:
             data = json.load(f)
         for s in data.get("series", []):
             center = s.get("center") or s.get("center_wgs84")
@@ -110,7 +110,7 @@ def load_cems_exclusion_records(
 
     p_tmb = Path(tmb_manifest_path)
     if p_tmb.exists():
-        with open(p_tmb, "r", encoding="utf-8") as f:
+        with open(p_tmb, encoding="utf-8") as f:
             tmb_list = json.load(f)
         if isinstance(tmb_list, list):
             for item in tmb_list:
@@ -279,7 +279,12 @@ def extract_events_from_overview(
         lons, lats, doys, ords = lons[idx], lats[idx], doys[idx], ords[idx]
 
     patch_labels = dbscan_spatiotemporal(
-        lons, lats, ords, eps_km=local_eps_km, eps_days=local_eps_days, min_samples=min_overview_cells
+        lons,
+        lats,
+        ords,
+        eps_km=local_eps_km,
+        eps_days=local_eps_days,
+        min_samples=min_overview_cells,
     )
 
     events: list[dict] = []
@@ -446,7 +451,10 @@ def filter_and_cluster_candidates(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Construye el manifiesto de eventos MCD64A1 mediterráneos (2018-2026) excluyendo CEMS."
+        description=(
+            "Construye el manifiesto de eventos MCD64A1 mediterráneos (2018-2026) "
+            "excluyendo CEMS."
+        )
     )
     parser.add_argument("--start-year", type=int, default=2018)
     parser.add_argument("--end-year", type=int, default=2026)
@@ -469,7 +477,10 @@ def main() -> int:
     print("=" * 72)
     print("MINERÍA DE EVENTOS MCD64A1 (MEDITERRÁNEO 2018-2026, BL4 + D15)")
     print(f"Registros de exclusión CEMS/TMB cargados: {len(cems_records)}")
-    print(f"Años: {args.start_year}..{args.end_year} | Meses: {args.months} | Max eventos: {args.max_events}")
+    print(
+        f"Años: {args.start_year}..{args.end_year} | "
+        f"Meses: {args.months} | Max eventos: {args.max_events}"
+    )
     print("=" * 72)
 
     col = (
@@ -495,11 +506,14 @@ def main() -> int:
             arr, transform = download_monthly_overview(img_id)
             evts = extract_events_from_overview(arr, year=yr, transform=transform)
             candidates.extend(evts)
-            print(f"  [{yr}-{mo:02d}] {len(evts):>3} parches quemados detectados (acumulado={len(candidates)})")
+            print(
+                f"  [{yr}-{mo:02d}] {len(evts):>3} parches quemados detectados "
+                f"(acumulado={len(candidates)})"
+            )
         except Exception as exc:
             print(f"  ! Error en {img_id}: {exc}")
 
-        # Si ya tenemos suficientes candidatos limpios para cubrir max_events con holgura, podemos parar
+        # Si ya hay suficientes candidatos limpios para cubrir max_events con holgura, parar
         if args.max_events and len(candidates) >= max(args.max_events * 3, 120):
             break
 
@@ -508,7 +522,7 @@ def main() -> int:
     )
 
     payload = {
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "source_collection": "MODIS/061/MCD64A1",
         "bbox_wgs84": list(MED_BBOX),
         "dbscan_params": {"eps_km": 150.0, "eps_days": 30},

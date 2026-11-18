@@ -14,18 +14,17 @@ Salida:
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import sys
 import time
+
 import numpy as np
 import pyproj
-import rasterio
+import shapely
 from rasterio.features import rasterize
 from rasterio.transform import Affine
-import shapely
-from shapely.geometry import shape, box, Polygon, MultiPolygon
+from shapely.geometry import box, shape
 
 
 def get_utm_epsg(lon: float, lat: float) -> int:
@@ -34,7 +33,9 @@ def get_utm_epsg(lon: float, lat: float) -> int:
     return (32600 + zone) if lat >= 0 else (32700 + zone)
 
 
-def transform_geom_to_utm(geom: shapely.Geometry, transformer: pyproj.Transformer) -> shapely.Geometry | None:
+def transform_geom_to_utm(
+    geom: shapely.Geometry, transformer: pyproj.Transformer
+) -> shapely.Geometry | None:
     """Reproyecta y valida una geometría a UTM."""
     try:
         if geom.is_empty:
@@ -103,7 +104,7 @@ def process_series(
 
         # 1. Cargar geometrías de fuego (observedEventA)
         try:
-            with open(event_path, "r", encoding="utf-8") as f:
+            with open(event_path, encoding="utf-8") as f:
                 event_data = json.load(f)
         except Exception:
             continue
@@ -129,14 +130,16 @@ def process_series(
             sub_burnt = np.zeros((sub_size_px, sub_size_px), dtype=np.uint8)
 
         # Promediar bloques 10x10 -> fracción quemada en [0..1] (D2)
-        burnt_frac = sub_burnt.reshape(grid_size_px, sub_factor, grid_size_px, sub_factor).mean(axis=(1, 3))
+        burnt_frac = sub_burnt.reshape(
+            grid_size_px, sub_factor, grid_size_px, sub_factor
+        ).mean(axis=(1, 3))
         burnt_frac = np.clip(burnt_frac, 0.0, 1.0).astype(np.float16)
 
         # 2. Cargar geometrías de no analizado (notAnalysedA)
         not_analysed_geoms_utm = []
         if os.path.exists(not_analysed_path):
             try:
-                with open(not_analysed_path, "r", encoding="utf-8") as f:
+                with open(not_analysed_path, encoding="utf-8") as f:
                     na_data = json.load(f)
                 for feat in na_data.get("features", []):
                     g = feat.get("geometry")
@@ -155,7 +158,9 @@ def process_series(
                 fill=0,
                 dtype=np.uint8,
             )
-            na_frac = sub_na.reshape(grid_size_px, sub_factor, grid_size_px, sub_factor).mean(axis=(1, 3))
+            na_frac = sub_na.reshape(
+                grid_size_px, sub_factor, grid_size_px, sub_factor
+            ).mean(axis=(1, 3))
             # Si más del 50% del píxel no fue analizado, marcar como 255 (D3)
             valido_mask = np.where(na_frac >= 0.5, 255, 1).astype(np.uint8)
         else:
@@ -212,23 +217,27 @@ def process_series(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Paso 2: Rasterización de etiquetas CEMS a 300m")
-    parser.add_argument("--manifest", default="data/cems_manifest_46.json", help="Ruta al manifiesto")
+    parser.add_argument(
+        "--manifest", default="data/cems_manifest_46.json", help="Ruta al manifiesto"
+    )
     parser.add_argument("--raw-dir", default="data/raw/cems", help="Directorio con los GeoJSON")
-    parser.add_argument("--output-dir", default="data/processed/cems_labels", help="Directorio destino .npz")
+    parser.add_argument(
+        "--output-dir", default="data/processed/cems_labels", help="Directorio destino .npz"
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.manifest):
         print(f"Error: {args.manifest} no existe.", file=sys.stderr)
         return 1
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    with open(args.manifest, encoding="utf-8") as f:
         manifest = json.load(f)
 
     series_list = manifest.get("series", [])
     os.makedirs(args.output_dir, exist_ok=True)
 
     print("=" * 72)
-    print(f"PASO 2: RASTERIZACIÓN DE ETIQUETAS CEMS (300 m, 64x64 px)")
+    print("PASO 2: RASTERIZACIÓN DE ETIQUETAS CEMS (300 m, 64x64 px)")
     print(f"Entrada: {args.raw_dir}")
     print(f"Destino: {args.output_dir}")
     print(f"Total series a procesar: {len(series_list)}")
@@ -245,9 +254,15 @@ def main() -> int:
             n_r = len(res["rounds"])
             total_rounds_rasterized += n_r
             processed_series.append(res)
-            print(f"[{idx:>2}/{len(series_list)}] {series_id:<18} -> {n_r} rondas rasterizadas con éxito")
+            print(
+                f"[{idx:>2}/{len(series_list)}] {series_id:<18} -> "
+                f"{n_r} rondas rasterizadas con éxito"
+            )
         else:
-            print(f"[{idx:>2}/{len(series_list)}] {series_id:<18} -> ! Omitida (datos insuficientes)")
+            print(
+                f"[{idx:>2}/{len(series_list)}] {series_id:<18} -> "
+                "! Omitida (datos insuficientes)"
+            )
 
     elapsed = time.time() - start_time
 

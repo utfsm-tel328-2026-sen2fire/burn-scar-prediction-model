@@ -35,7 +35,9 @@ def test_el_paquete_almacenado_usa_la_codificacion_canonica():
             mask_vals = set(np.unique(data["mask"]).tolist())
             mask_cems_vals = set(np.unique(data["mask_cems"]).tolist())
         assert mask_vals <= {1, 255}, f"{path.name}: mask contiene {sorted(mask_vals)}"
-        assert mask_cems_vals <= {1, 255}, f"{path.name}: mask_cems contiene {sorted(mask_cems_vals)}"
+        assert mask_cems_vals <= {1, 255}, (
+            f"{path.name}: mask_cems contiene {sorted(mask_cems_vals)}"
+        )
 
 
 # ── 3.1-3.4 Versión del generador ─────────────────────────────────────────

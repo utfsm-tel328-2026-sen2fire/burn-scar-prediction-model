@@ -122,7 +122,9 @@ def audit_dataset(index_path: str | Path) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Auditoría de integridad del dataset de propagación")
+    parser = argparse.ArgumentParser(
+        description="Auditoría de integridad del dataset de propagación"
+    )
     parser.add_argument("--index", default="data/processed/dataset_index.json")
     parser.add_argument("--output", default=None, help="Fichero JSON opcional para el informe")
     args = parser.parse_args()

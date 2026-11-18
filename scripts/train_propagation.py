@@ -615,7 +615,7 @@ def evaluate_only(args: argparse.Namespace) -> int:
     thr_file = ckpt_dir / "operational_threshold.json"
     tau = DEFAULT_THRESHOLD
     if thr_file.exists():
-        with open(thr_file, "r", encoding="utf-8") as f:
+        with open(thr_file, encoding="utf-8") as f:
             tau = float(json.load(f).get("operational_threshold", DEFAULT_THRESHOLD))
 
     paths = sorted(ckpt_dir.glob("best_fold_*.pt"))
@@ -725,14 +725,22 @@ def _aggregate_cold_start(test_metrics: list[dict]) -> dict[str, object]:
     """Resume el estrato de arranque en frío sin inventar métricas."""
     if not test_metrics:
         return {"represented": False, "n_samples_total": 0, "n_series_total": 0}
-    represented = all(metrics.get("cold_start", {}).get("represented", False) for metrics in test_metrics)
+    represented = all(
+        metrics.get("cold_start", {}).get("represented", False) for metrics in test_metrics
+    )
     return {
         "represented": represented,
         "n_samples_total": int(
-            np.mean([metrics.get("cold_start", {}).get("n_samples_total", 0) for metrics in test_metrics])
+            np.mean([
+                metrics.get("cold_start", {}).get("n_samples_total", 0)
+                for metrics in test_metrics
+            ])
         ),
         "n_series_total": int(
-            np.mean([metrics.get("cold_start", {}).get("n_series_total", 0) for metrics in test_metrics])
+            np.mean([
+                metrics.get("cold_start", {}).get("n_series_total", 0)
+                for metrics in test_metrics
+            ])
         ),
         "warning": (
             None
@@ -755,7 +763,7 @@ def _collect_checkpoint_provenance(
     dataset y a la ejecución canónicos.
     """
     provenance: list[dict[str, object]] = []
-    for path, fold in zip(checkpoint_paths, folds):
+    for path, fold in zip(checkpoint_paths, folds, strict=False):
         entry: dict[str, object] = {
             "fold": int(fold),
             "path": str(path),
@@ -828,7 +836,10 @@ def main() -> int:
     parser.add_argument(
         "--init-checkpoint",
         default=None,
-        help="Ruta opcional al checkpoint preentrenado M-A (mcd_pretrained.pt) para iniciar el ajuste M-B.",
+        help=(
+            "Ruta opcional al checkpoint preentrenado M-A (mcd_pretrained.pt) "
+            "para iniciar el ajuste M-B."
+        ),
     )
     parser.add_argument("--tag", default="propagation_convlstm_segformer")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)

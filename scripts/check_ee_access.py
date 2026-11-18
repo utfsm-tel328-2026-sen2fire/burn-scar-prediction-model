@@ -64,9 +64,9 @@ def main() -> int:
     api_habilitada = None
     if proyecto:
         try:
+            import requests
             from google.auth.transport.requests import Request
             from google.oauth2 import service_account
-            import requests
 
             creds = service_account.Credentials.from_service_account_file(
                 cuenta, scopes=["https://www.googleapis.com/auth/cloud-platform"]
@@ -112,7 +112,10 @@ def main() -> int:
         print("      https://console.cloud.google.com/iam-admin/iam?project="
               f"{proyecto or 'TU_PROYECTO'}")
         print("    · O falta registrar el proyecto para Earth Engine:")
-        print(f"      https://code.earthengine.google.com/register?project={proyecto or 'TU_PROYECTO'}")
+        print(
+            "      https://code.earthengine.google.com/register?project="
+            f"{proyecto or 'TU_PROYECTO'}"
+        )
         print("    · Tras conceder un rol, la propagación tarda unos minutos.")
         return 1
 
@@ -120,7 +123,7 @@ def main() -> int:
     #    consulta real de la colección OLCI.
     manifest_path = Path(args.manifest)
     if manifest_path.is_file():
-        with open(manifest_path, "r", encoding="utf-8") as f:
+        with open(manifest_path, encoding="utf-8") as f:
             manifest = json.load(f)
         series = [s for s in manifest.get("series", []) if s.get("bbox_wkt")]
         if series:

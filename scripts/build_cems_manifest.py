@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import math
 import os
 import re
 import sys
@@ -113,7 +112,7 @@ def deduplicate_manifest_samples(series_list: list[dict]) -> dict[str, int]:
         # Se conserva el orden de aparición (cronológico) y, dentro de cada
         # `sample_id`, se elige un representante determinista.
         canonical_samples = []
-        for sample_id, candidates in grouped.items():
+        for _sample_id, candidates in grouped.items():
             chosen = sorted(
                 candidates,
                 key=lambda sample: str(sample.get("frame_scene_id") or sample.get("id") or ""),
@@ -192,7 +191,9 @@ def fetch_cdse_olci_scenes(
         f"and OData.CSC.Intersects(area=geography'SRID=4326;{poly_wkt}') "
         f"and ContentDate/Start gt {t0_str} and ContentDate/Start lt {t1_str}"
     )
-    params = urllib.parse.urlencode({"$filter": filter_expr, "$top": 100, "$orderby": "ContentDate/Start asc"})
+    params = urllib.parse.urlencode(
+        {"$filter": filter_expr, "$top": 100, "$orderby": "ContentDate/Start asc"}
+    )
     url = f"{CDSE_ODATA}?{params}"
 
     data = get_json(url)
@@ -215,16 +216,25 @@ def fetch_cdse_olci_scenes(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Manifiesto CEMS + Sentinel-3 OLCI (P7 y R14)")
-    parser.add_argument("--audit-json", default="runs/audit_results.json", help="Ruta a audit_results.json")
-    parser.add_argument("--output", default="data/cems_manifest_46.json", help="Ruta del manifiesto de salida")
-    parser.add_argument("--limit", type=int, default=None, help="Límite de series a procesar (para testing)")
+    parser.add_argument(
+        "--audit-json", default="runs/audit_results.json", help="Ruta a audit_results.json"
+    )
+    parser.add_argument(
+        "--output", default="data/cems_manifest_46.json", help="Ruta del manifiesto de salida"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Límite de series a procesar (para testing)"
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.audit_json):
-        print(f"Error: {args.audit_json} no existe. Ejecuta audit_tmb_splits.py primero.", file=sys.stderr)
+        print(
+            f"Error: {args.audit_json} no existe. Ejecuta audit_tmb_splits.py primero.",
+            file=sys.stderr,
+        )
         return 1
 
-    with open(args.audit_json, "r", encoding="utf-8") as f:
+    with open(args.audit_json, encoding="utf-8") as f:
         audit_data = json.load(f)
 
     all_series = audit_data.get("series", [])
@@ -383,7 +393,7 @@ def main() -> int:
 
                 # Frames previos para el tensor temporal (hasta 6 frames pasados)
                 past_frames = [s for s in olci_scenes if s["dt"] <= t_f]
-                # Pre-fire frame: último frame anterior al primer indicio de fuego (search_start..first_round_dt)
+                # Pre-fire: último frame anterior al primer indicio (search_start..first_round_dt)
                 pre_fire_candidates = [s for s in olci_scenes if s["dt"] < first_round_dt]
                 pre_fire_id = pre_fire_candidates[-1]["id"] if pre_fire_candidates else None
 
@@ -430,8 +440,13 @@ def main() -> int:
     print("=" * 72)
     print(f"Series procesadas:                 {len(manifest_series)}")
     print(f"Transiciones totales:              {total_transitions}")
-    pct_sensor_change = (100.0 * transition_sensor_changes / total_transitions) if total_transitions else 0.0
-    print(f"Transiciones con cambio de sensor: {transition_sensor_changes} ({pct_sensor_change:.1f}%) [R14]")
+    pct_sensor_change = (
+        (100.0 * transition_sensor_changes / total_transitions) if total_transitions else 0.0
+    )
+    print(
+        f"Transiciones con cambio de sensor: {transition_sensor_changes} "
+        f"({pct_sensor_change:.1f}%) [R14]"
+    )
     print(f"Total de muestras generadas (f, h):{total_samples} [P7 RESUELTO]")
 
     if horizons_days:
@@ -449,7 +464,7 @@ def main() -> int:
     # Guardar manifiesto
     manifest_catalog_summary = deduplicate_manifest_samples(manifest_series)
     payload = {
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "summary": {
             "total_series": len(manifest_series),
             "pure_mediterranean": sum(1 for s in manifest_series if s["geo_mediterranean"]),

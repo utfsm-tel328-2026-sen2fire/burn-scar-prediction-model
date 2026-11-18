@@ -58,7 +58,9 @@ class ConvLSTMCell(nn.Module):
         h_new = torch.sigmoid(o) * torch.tanh(c_new)
         return h_new, c_new
 
-    def init_hidden(self, batch: int, h: int, w: int, device: torch.device) -> tuple[Tensor, Tensor]:
+    def init_hidden(
+        self, batch: int, h: int, w: int, device: torch.device
+    ) -> tuple[Tensor, Tensor]:
         z = torch.zeros(batch, self.hidden_ch, h, w, device=device)
         return z, z.clone()
 

@@ -9,10 +9,8 @@ Implementa los baselines sin aprendizaje automático estipulados en docs/dataset
 """
 from __future__ import annotations
 
-from typing import Sequence
 import numpy as np
 import scipy.ndimage as ndi
-import torch
 from torch import Tensor
 
 
@@ -134,7 +132,9 @@ def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) 
 class BaselineB0Persistence:
     """B0: El fuego no crece (predice delta = 0 en todo el mapa)."""
 
-    def predict(self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0) -> np.ndarray:
+    def predict(
+        self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0
+    ) -> np.ndarray:
         if isinstance(x_scar, Tensor):
             x_scar = x_scar.cpu().numpy()
         # Devuelve ceros con la forma de la cicatriz
@@ -165,7 +165,9 @@ class BaselineB1RadialDilation:
     def __init__(self, growth_rate_km_per_day: float = 0.6) -> None:
         self.rate_px_per_day = (growth_rate_km_per_day / 0.3)  # a 300 m/px -> 2 px/día
 
-    def predict(self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0) -> np.ndarray:
+    def predict(
+        self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0
+    ) -> np.ndarray:
         if isinstance(x_scar, Tensor):
             x_scar = x_scar.cpu().numpy()
         if isinstance(horizon_days, Tensor):

@@ -210,7 +210,7 @@ def summarize_scar_coverage(
     ids = list(series_ids) if series_ids is not None else []
     cold_samples = sum(v.get("state") == "cold_start" for v in values)
     cold_series = (
-        len({sid for sid, v in zip(ids, values) if v.get("state") == "cold_start"})
+        len({sid for sid, v in zip(ids, values, strict=True) if v.get("state") == "cold_start"})
         if ids
         else 0
     )

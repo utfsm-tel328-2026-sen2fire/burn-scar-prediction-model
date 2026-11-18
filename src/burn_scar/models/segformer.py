@@ -148,7 +148,10 @@ class _MixTransformerStage(nn.Module):
         super().__init__()
         self.patch_embed = _OverlapPatchEmbed(in_ch, embed_dim, patch_size=3, stride=2)
         self.blocks = nn.ModuleList(
-            [_MixTransformerBlock(embed_dim, num_heads, sr_ratio, mlp_ratio, drop, attn_drop) for _ in range(depth)]
+            [
+                _MixTransformerBlock(embed_dim, num_heads, sr_ratio, mlp_ratio, drop, attn_drop)
+                for _ in range(depth)
+            ]
         )
         self.norm = nn.LayerNorm(embed_dim)
 
@@ -260,7 +263,10 @@ class MiniSegFormer(nn.Module):
 
         if temporal_attention:
             self.temp_attn = nn.ModuleList(
-                [_TemporalAttention(d, num_heads=temporal_num_heads, drop=drop_rate) for d in embed_dims]
+                [
+                    _TemporalAttention(d, num_heads=temporal_num_heads, drop=drop_rate)
+                    for d in embed_dims
+                ]
             )
 
         # All-MLP decoder

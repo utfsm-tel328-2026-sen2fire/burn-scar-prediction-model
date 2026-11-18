@@ -7,14 +7,13 @@ y evaluación en cero-disparo sobre los 5 folds de CEMS (B10, D16).
    con partición interna train/val sin fuga espacial (fold 0..3 train, fold 4 val).
 2. Guarda el checkpoint preentrenado en `--output-checkpoint` (`checkpoints/mcd_pretrained.pt`)
    y en el directorio del `ExperimentTracker`.
-3. Evalúa el modelo **M-A** directamente sobre el índice de CEMS (`data/processed/dataset_index.json`)
-   sin haber visto nunca etiquetas CEMS (transferencia pura).
+3. Evalúa el modelo **M-A** directamente sobre el índice de CEMS
+   (`data/processed/dataset_index.json`) sin haber visto nunca etiquetas CEMS.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import sys
 import time
@@ -39,7 +38,7 @@ def _build_pretrain_loaders(
     batch_size: int = 8,
     num_workers: int = 2,
 ) -> tuple[DataLoader, DataLoader]:
-    with open(index_path, "r", encoding="utf-8") as f:
+    with open(index_path, encoding="utf-8") as f:
         idx_data = json.load(f)
     samples = idx_data.get("samples", [])
     if not samples:

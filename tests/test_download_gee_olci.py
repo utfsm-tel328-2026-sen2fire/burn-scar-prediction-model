@@ -11,7 +11,10 @@ import pytest
 
 SCRIPT_PATH = Path("scripts/download_gee_olci.py")
 
-BBOX_WKT = "POLYGON((16.3142 43.1867, 16.6720 43.1867, 16.6720 43.4652, 16.3142 43.4652, 16.3142 43.1867))"
+BBOX_WKT = (
+    "POLYGON((16.3142 43.1867, 16.6720 43.1867, 16.6720 43.4652, "
+    "16.3142 43.4652, 16.3142 43.1867))"
+)
 
 
 class FakeGeometry:
@@ -374,7 +377,9 @@ def test_un_fichero_estatico_valido_se_preserva(downloader, tmp_path, monkeypatc
         validate_static_layers(data["dem"], data["worldcover"])
 
 
-def test_un_fichero_estatico_invalido_se_reemplaza_por_uno_valido(downloader, tmp_path, monkeypatch):
+def test_un_fichero_estatico_invalido_se_reemplaza_por_uno_valido(
+    downloader, tmp_path, monkeypatch
+):
     from burn_scar.quality import validate_static_layers
 
     static_dir = tmp_path / "static"
