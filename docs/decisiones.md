@@ -36,17 +36,20 @@
 | # | Pendiente | Estado / Resolución en v1 | Dónde se decide |
 |---|---|---|---|
 | ~~**P1**~~ | ~~Ejecutar la auditoría de splits~~ | **Hecho.** 62/96 series en TMB-S3; 50 excluidas; quedan 46 | §3 |
-| ~~**P2**~~ | ~~Definir B2 (advección por viento) con precisión~~ | **Acotado a v2.** En la v1 sin canales meteorológicos en el tensor entrenado, las referencias canónicas implementadas son **B0 (persistencia)**, **B1 (dilatación radial)** y el **trivial "todo quemado"** al mismo umbral operativo; B2 queda diferido a la v2 junto con la ingesta de viento ERA5/GFS | dataset.md §9-§10, `baselines.py` |
+| ~~**P2**~~ | ~~Definir B2 (advección por viento) con precisión~~ | **Descartado: el viento queda fuera del alcance.** No se implementa B2 ni el canal meteorológico (ERA5/GFS). El criterio de aceptación pasa a ser la comparación contra **B0 (persistencia)**, **B1 (dilatación radial)** y el **trivial "todo quemado"**, medidos al mismo umbral operativo y sobre el mismo subconjunto evaluable | dataset.md §9-§10, `baselines.py` |
 | ~~**P3**~~ | ~~Fijar el alcance de la entrega: ¿se entrega M-A, M-B o los dos?~~ | **Hecho.** Se entregan y comparan **ambos** (`M-A` cero-disparo con MCD64A1 y `M-B` ajustado en CEMS, más variante Tversky y entrenamiento directo `prop_v4_integrity`) sobre el mismo test canónico | operacion.md §9, dataset.md §8 |
-| ~~**P4**~~ | ~~Decidir si *h* se codifica posicionalmente o como escalar normalizado~~ | **Hecho.** Se codifica de forma continua mediante condicionamiento **FiLM (`HorizonModulation`)** sobre $\log(1 + h_{\text{días}})$ | `src/burn_scar/models/propagation.py` |
+| ~~**P4**~~ | ~~Decidir si *h* se codifica posicionalmente o como escalar normalizado~~ | **Hecho.** Se codifica de forma **continua como escalar normalizado**: `log1p(h)/2.5` proyectado a canal espacial y fusionado con el resto de entradas. No hay codificación posicional por día ni FiLM | `src/burn_scar/models/propagation.py` |
 | ~~**P5**~~ | ~~Medir el error de TMB-S3 contra CEMS sobre las 46 series~~ | **Hecho.** Cuantificada la brecha entre la etiqueta de ensamblaje (`target`) y el crecimiento real entre rondas (`target_cems`): relación de superficie mediana $37\times$ e IoU $0,033$, publicando siempre ambas métricas por separado | operacion.md §9 |
 | ~~**P6**~~ | ~~Definir qué es "el siguiente OLCI" en la cadena de procesamiento~~ | **Hecho.** Identidad canónica `(satélite, segundo UTC)`, emparejamiento de $f$ por cercanía temporal ($\le 2$ min) y filtro del $20\%$ de píxeles sin banda válida | §1.5 A1–A4, A7 |
 | ~~**P7**~~ | ~~**Medir el nº real de muestras con la regla "una por frame OLCI"**~~ | **Hecho.** 411 muestras únicas $(f, h)$ sobre 44 series utilizables tras colapsar 3 duplicados CDSE (296 muestras ensambladas en 40 series con capas estáticas válidas). Manifiesto en `data/cems_manifest_46.json` | dataset.md §2, operacion.md §9 |
+| **P8** | **Estratificar la evaluación** por cambio de sensor y publicar el estrato de control de TMB-S3 | El ruido de R14 se concentra en la banda del frente; sin estratificar, parte del desempeño es diferencia de detección y no propagación. Los datos ya están en el índice (`sensor_changed`, `in_tmb_test`), falta el reporte | dataset.md §10, D4, D7 |
 
 > **Estado al cierre de v1.** Los puntos P1–P7 quedaron cerrados o acotados explícitamente:
 > la cadena completa (`R19` → `M-A` en MCD64A1 → `M-B` en CEMS → calibración Tversky y
-> evaluación estratificada contra `B0`/`B1`/trivial) está implementada y verificada en
-> `operacion.md` §9.
+> comparación contra `B0`/`B1`/trivial al mismo umbral y sobre el mismo subconjunto
+> evaluable) está implementada y verificada en `operacion.md` §9. Queda abierto **P8**: la
+> estratificación por sensor y el estrato de control de TMB-S3, que ningún script
+> publica todavía.
 
 ### 1.3 Decisiones para la recopilación de datos (BL1-BL7) — **Cerradas**
 

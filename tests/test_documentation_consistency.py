@@ -235,8 +235,12 @@ def test_los_scripts_mencionados_en_la_documentacion_existen():
 
 def test_la_comparativa_de_preentrenamiento_esta_documentada():
     """La comparación M-A vs M-B es un resultado del proyecto: tiene que estar escrita."""
+    runs = ("mcd_pretrained", "prop_m_b_finetuned", "prop_m_b_tversky")
     texto = _normalized(OPERACION.read_text(encoding="utf-8"))
     assert "Comparativa M-A vs M-B" in texto
-    for run in ("comparativa_scratch", "comparativa_mb_pretrained"):
+    for run in runs:
         assert run in texto, f"la comparativa no menciona el run {run}"
-    assert "m_a_zero_shot.json" in texto
+    # El resumen del README debe nombrar los mismos runs que la tabla de §9.
+    resumen = _normalized(README.read_text(encoding="utf-8"))
+    for run in runs:
+        assert run in resumen, f"el README no menciona el run {run}"

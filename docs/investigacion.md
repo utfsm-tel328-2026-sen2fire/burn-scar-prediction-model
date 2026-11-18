@@ -42,7 +42,7 @@ siguiente paso, y la razón de que esté planeada es precisamente la que da este
 para generalizar (WSTS tiene 607, TS-SatFire 179, TMB-S3 246). Y la auditoría de splits
 (decisiones.md §3) reduce el conjunto útil a **46 series limpias**, porque TMB-S3 se sabe de
 memoria 50 de ellas (operacion.md §4). De esas 46, el manifiesto conserva 44 y el dataset
-publicado **40 series** con 295 muestras. Es el principal frente abierto y la razón de
+publicado **40 series** con 296 muestras. Es el principal frente abierto y la razón de
 las dos palancas de ampliación (decisiones.md §4).
 
 **Las tres decisiones que definen el proyecto**, y que se互补an:

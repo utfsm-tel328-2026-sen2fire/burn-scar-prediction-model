@@ -27,7 +27,6 @@ previstos para una segunda versión.
 
 ## Estado
 
-<<<<<<< HEAD
 **Modelos entrenados (`M-A`, `M-B`, Tversky y desde cero) y dataset canónico regenerado.**
 El dataset vigente contiene **296 muestras únicas en 40 series**, con horizontes continuos,
 inventario de calidad y capas estáticas validadas.
@@ -42,7 +41,7 @@ bajo el mismo protocolo y umbral común (`0,10`), más el umbral operativo CV (`
 | Trivial "todo quemado" | 0,10 | 16,29% | 8,42% | 9,41% |
 | **M-A** (`mcd_pretrained`, cero-disparo sin CEMS) | 0,10 | **19,71%** | **10,61%** | 14,05% |
 | **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | **30,98%** | **11,80%** | 29,89% |
-| **M-B + Tversky** (`prop_m_b_tversky`, $\alpha=0,7, \beta=0,3, w_{\max}=5$) | 0,10 | **32,90%** | **10,08%** | **39,53%** |
+| **M-B + Tversky** (`prop_m_b_tversky`, α=0,7, β=0,3, w_max=5) | 0,10 | **32,90%** | **10,08%** | **39,53%** |
 | **Modelo de producción** (`prop_v4_integrity`, umbral común) | 0,10 | **36,46%** | **14,68%** | 28,40% |
 | **Modelo de producción** (`prop_v4_integrity`, umbral operativo CV) | 0,20 | **39,34%** | **10,59%** | 33,12% |
 
@@ -53,36 +52,16 @@ estabiliza el umbral entre folds (`0,10–0,20`) y eleva la precisión al **39,5
 en frío **no está representado** y no se publica un desempeño para él; las bandas de horizonte
 se reportan solo como diagnóstico y no filtran nada. La tabla completa, con IoU, precisión,
 recall, soporte por banda y recuentos evaluables, está en
-=======
-**Modelo entrenado y dataset canónico regenerado (2026-11-16).** El dataset vigente tiene
-**295 muestras únicas en 40 series**, con horizontes continuos, inventario de calidad y
-capas estáticas validadas. El run canónico es `prop_v4_integrity` (semilla 42), con umbral
-operativo congelado en **0,10**.
-
-Conjunto de test (fold -1, 25 muestras, 7 series), modelo y baselines al mismo umbral y
-sobre el mismo subconjunto:
-
-| Modelo | F1 (etiqueta de ensamblaje) | F1 (referencia = propagación real) |
-|---|---:|---:|
-| B1 dilatación radial | 15,94% | 7,30% |
-| Trivial "todo quemado" | 16,29% | 8,42% |
-| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **14,80%** |
-
-**El número publicable es el de la referencia (14,80%)**: la etiqueta de ensamblaje incluye
-quemado que TMB-S3 no detectó, y eso la hace mucho más fácil de acertar. El arranque en
-frío **no está representado** y no se publica un desempeño para él; las bandas de
-horizonte se reportan solo como diagnóstico y no filtran nada. La tabla completa —IoU,
-precisión, recall, soporte por banda y recuentos evaluables— está en
->>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
 [`docs/operacion.md`](docs/operacion.md) §9.
 
 Dos cosas que conviene saber antes de citar cifras:
 
 - El run anterior `prop_v4` queda como **histórico y no publicable**: su índice tenía
   entradas duplicadas y una serie de test con WorldCover vacío.
-- El preentrenamiento con MCD64A1 (M-A → M-B) **está implementado y no aporta**: con los
-  runs actuales, entrenar desde cero iguala o supera al modelo preentrenado. Está
-  documentado como diagnóstico en [`docs/operacion.md`](docs/operacion.md) §9.
+- `M-A`, `M-B` y `M-B + Tversky` están entrenados y medidos **sobre el mismo test, con el
+  mismo umbral y el mismo subconjunto evaluable** que el modelo de producción (tabla
+  arriba). `M-A` ya supera a B1 y al trivial sin haber visto CEMS; el ajuste `M-B` mejora a
+  `M-A`, pero todavía no supera al entrenamiento desde cero.
 
 ## Puesta en marcha
 
@@ -162,28 +141,23 @@ en qué fichero.
 
 ## Próximos pasos (v2 / trabajo futuro)
 
-1. **Implementar B2 (advección por viento)** y compararlo contra el mismo conjunto y
-   umbral: es el criterio de aceptación del proyecto (el modelo debe superar la física
-   sin ML) y su definición exacta es la pendiente P2.
-2. **Estratificar la evaluación** por cambio de sensor y publicar el estrato de control de
+1. **Estratificar la evaluación** por cambio de sensor y publicar el estrato de control de
    TMB-S3: los datos ya están en el índice, falta el reporte (P8).
-3. Ampliar el conjunto y recuperar `EMSR785_AOI01` con una fuente estática que no devuelva
+2. Ampliar el conjunto y recuperar `EMSR785_AOI01` con una fuente estática que no devuelva
    WorldCover vacío.
-<<<<<<< HEAD
-2. Obtener observaciones genuinas de arranque en frío o mantenerlo explícitamente fuera del
+3. Obtener observaciones genuinas de arranque en frío o mantenerlo explícitamente fuera del
    alcance de desempeño.
-3. Incorporar canales meteorológicos de viento (ERA5/GFS) e implementar B2 (advección por
-   viento) en la v2 para comparar contra el mismo conjunto y umbral.
-4. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
+4. Evaluar la calibración de las salidas y la estabilidad del umbral por fold y horizonte.
+5. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
+
+> **El viento queda fuera del alcance del proyecto.** No se implementa B2 (advección por
+> viento) ni el canal meteorológico (ERA5/GFS). El criterio de aceptación se sustituye por
+> la comparación contra **B1** y el **trivial "todo quemado"** medidos al mismo umbral
+> operativo y sobre el mismo subconjunto evaluable. Ver
+> [`docs/decisiones.md`](docs/decisiones.md) §1.2 (P2).
 
 La auditoría reproducible del dataset, el barrido de umbrales y la procedencia de los runs están en
 `scripts/audit_dataset_integrity.py`, `scripts/sweep_thresholds.py` y `operational_threshold.json`, respectivamente.
-=======
-4. Evaluar la calibración de las salidas y la estabilidad del umbral por fold y horizonte.
-5. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
-6. Obtener observaciones genuinas de arranque en frío, o mantenerlo explícitamente fuera
-   del alcance de desempeño.
->>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
 
 ## Estructura
 

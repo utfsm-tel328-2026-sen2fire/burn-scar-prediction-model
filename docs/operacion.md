@@ -325,7 +325,7 @@ compensa pagar la carga en paralelo, y conviene medir antes de asumir.
 
 ### Runs largos
 
-El entrenamiento completo son ~2 min con el dataset vigente (295 muestras): lánzalo con `nohup` (o `tmux`) y vigila el log.
+El entrenamiento completo son ~2 min con el dataset vigente (296 muestras): lánzalo con `nohup` (o `tmux`) y vigila el log.
 Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el proceso.
 
 ### Cómo leer los números
@@ -352,37 +352,6 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
 - La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
 
-<<<<<<< HEAD
-### Preentrenamiento con MCD64A1 (Etapa M-A → Ajuste M-B)
-
-Para incorporar datos de preentrenamiento de `MODIS/061/MCD64A1` (sin solapamiento con los
-96 eventos CEMS) e inicializar el ajuste en los 5 folds de CEMS:
-
-```bash
-# 1. Diagnóstico R19: verificar desfase mediano (BurnDate - observed_time) sobre CEMS
-uv run python scripts/audit_mcd64a1_lag.py --limit 12
-
-# 2. Minería de eventos MCD64A1 mediterráneos (2018-2026, DBSCAN 150 km/30 d, excluyendo CEMS)
-uv run python scripts/build_mcd64a1_manifest.py --max-events 500
-
-# 3. Descarga incremental y reanudable de parches 64x64 (MCD64A1 + OLCI con nubes reales + DEM/WC)
-uv run python scripts/download_gee_mcd64a1.py --manifest data/mcd_manifest.json
-
-# 4. Ensamblar el dataset PyTorch de preentrenamiento (TMB-S3 congelado + máscara QA)
-uv run --extra rocm python scripts/build_mcd64a1_dataset.py
-
-# 5. Etapa 1 (M-A): preentrenar con MCD64A1 y evaluar transferencia cero-disparo sobre CEMS
-uv run --extra rocm python scripts/pretrain_mcd64a1.py \
-      --epochs 10 --output-checkpoint checkpoints/mcd_pretrained.pt
-
-# 6. Etapa 2 (M-B): ajustar los 5 folds de CEMS inicializando desde el checkpoint M-A
-uv run --extra rocm python scripts/train_propagation.py \
-      --epochs 15 --init-checkpoint checkpoints/mcd_pretrained.pt \
-      --tag prop_m_b_finetuned
-```
-
-=======
->>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
 ## 9. Qué etiqueta se está midiendo (diagnóstico del target)
 
 El dataset guarda **dos etiquetas** por muestra:
@@ -394,7 +363,7 @@ El dataset guarda **dos etiquetas** por muestra:
 
 No son la misma cosa. La de ensamblaje resta una **fotografía** de TMB-S3, que en el frente
 de fuego se queda corta: el resultado mezcla crecimiento nuevo con quemado que ya existía
-y que el generador no detectó. Medido sobre las **295 muestras** del dataset vigente:
+y que el generador no detectó. Medido sobre las **296 muestras** del dataset vigente:
 
 | | Etiqueta de ensamblaje | Etiqueta de referencia |
 |---|---|---|
@@ -456,56 +425,66 @@ contra `artefactos/canonicos.json`.
 
 ### Resultados canónicos
 
-Conjunto de test (fold -1, fuera de dominio: 25 muestras únicas, 7 series), **umbral
-operativo congelado en 0,10**, con modelo y baselines sobre el mismo índice, el mismo umbral,
-las mismas etiquetas y el mismo subconjunto evaluable.
+Conjunto de test (fold -1, fuera de dominio: 25 muestras únicas, 7 series), con modelo y
+baselines sobre el **mismo índice, las mismas etiquetas y el mismo subconjunto evaluable**.
+El umbral operativo congelado del run canónico es **0,20**; la comparación justa entre
+modelos se hace además a un **umbral común de 0,10**, que es donde se comparan todos.
 
 **Contra la etiqueta de ensamblaje** (`target`, incluye quemado no detectado por TMB-S3):
 
-| Modelo | F1 | IoU | Precisión | Recall | Evaluables |
-|---|---:|---:|---:|---:|---|
-| B0 persistencia | 0,00% | 0,00% | 0,00% | 0,00% | 24/25 |
-| B1 dilatación radial | 15,94% | 9,00% | 19,11% | 30,07% | 24/25 |
-| Trivial "todo quemado" | 16,29% | 9,41% | 9,41% | 100,00% | 24/25 |
-| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **25,45%** | 27,64% | 87,04% | 24/25 |
+| Modelo | Umbral | F1 | Precisión | Evaluables |
+|---|---:|---:|---:|---:|
+| B0 persistencia | 0,10 | 0,00% | 0,00% | 24/25 |
+| B1 dilatación radial | 0,10 | 15,94% | 19,11% | 24/25 |
+| Trivial "todo quemado" | 0,10 | 16,29% | 9,41% | 24/25 |
+| **M-A** (`mcd_pretrained`, cero-disparo) | 0,10 | 19,71% | 14,05% | 24/25 |
+| **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | 30,98% | 29,89% | 24/25 |
+| **M-B + Tversky** (`prop_m_b_tversky`) | 0,10 | 32,90% | 39,53% | 24/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | 0,10 | **36,46%** | 28,40% | 24/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | 0,20 | 39,34% | 33,12% | 24/25 |
 
 **Contra la referencia** (crecimiento real entre rondas CEMS, que es propagación):
 
-| Modelo | F1 | IoU | Precisión | Recall | Evaluables |
-|---|---:|---:|---:|---:|---|
-| B0 persistencia | 0,00% | 0,00% | 0,00% | 0,00% | 23/25 |
-| B1 dilatación radial | 7,30% | 3,90% | 7,74% | 12,22% | 23/25 |
-| Trivial "todo quemado" | 8,42% | 4,73% | 4,73% | 100,00% | 23/25 |
-| **Modelo de producción** (`prop_v4_integrity`) | **14,80%** | **8,78%** | 9,88% | 82,31% | 23/25 |
+| Modelo | Umbral | F1 | Evaluables |
+|---|---:|---:|---:|
+| B0 persistencia | 0,10 | 0,00% | 23/25 |
+| B1 dilatación radial | 0,10 | 7,30% | 23/25 |
+| Trivial "todo quemado" | 0,10 | 8,42% | 23/25 |
+| **M-A** (`mcd_pretrained`, cero-disparo) | 0,10 | 10,61% | 23/25 |
+| **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | 11,80% | 23/25 |
+| **M-B + Tversky** (`prop_m_b_tversky`) | 0,10 | 10,08% | 23/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | 0,10 | **14,68%** | 23/25 |
+| **Modelo de producción** (`prop_v4_integrity`) | 0,20 | 10,59% | 23/25 |
 
-**Soporte por banda de horizonte** (estrato de diagnóstico; ninguna banda filtra nada):
-
-| Banda | Ensamblaje | Referencia |
-|---|---|---|
-| `(0,1]` | F1 32,24%, IoU 21,91%, 18/19 evaluables (6 series) | F1 16,59%, IoU 9,97%, 17/19 evaluables (6 series) |
-| `(1,3]` | F1 44,68%, IoU 31,43%, 6/6 evaluables (5 series) | F1 17,63%, IoU 10,35%, 6/6 evaluables (5 series) |
-
-No hay soporte de test en `(3,7]`, `(7,14]` ni `(14,+inf)`: el conjunto de test solo cubre
-hasta tres días. Las métricas globales de las tablas anteriores sí incluyen todas las
-muestras únicas del conjunto.
+> **Qué es canónico y qué no.** Las cifras anteriores son las del run publicado en
+> `artefactos/canonicos.json` (`checkpoints/antonio_prop_v4_integrity_20261117_165923`,
+> semilla 42). El detalle por run —IoU, recall y el **soporte por banda de horizonte**—
+> queda en el JSON de cada run (`runs/<run>/`), que no se versiona; las bandas son
+> diagnóstico y ninguna filtra las métricas globales.
+>
+> **Reproducibilidad entre máquinas.** El protocolo y el **umbral operativo se reproducen**
+> (una reentrenada con la misma semilla da el mismo 0,20), pero **los decimales no**: la
+> cicatriz de TMB-S3 y el entrenamiento se calculan en GPU y dependen del hardware. En esta
+> máquina (AMD ROCm) la reentrenada da 41,93% / 7,92% a 0,20, frente a 39,34% / 10,59% del
+> run publicado (NVIDIA). Por eso el `dataset_content_sha256` —que incorpora la cobertura de
+> la cicatriz— **tampoco es estable entre máquinas**: es estable entre regeneraciones en la
+> misma, que es lo que garantiza.
 
 La CV diagnóstica `prop_cems_diag_v4_integrity` usa su propio dataset, su propia semilla y su
-propio umbral congelado (0,20, con dispersión 0,30) y obtiene 9,43% contra ambas etiquetas
+propio umbral congelado (0,10, con dispersión 0,30) y obtiene 9,43% contra ambas etiquetas
 sobre 23/25 muestras; al cambiar etiqueta, umbral y subconjunto, **no es comparable
 directamente** con las tablas anteriores.
 
 Cómo leerlo:
 
-- **El número publicable de propagación es 14,80%**, no 36,51%. El segundo mide desempeño
-  contra una etiqueta que incluye quemado no detectado.
+- **El número publicable de propagación es 14,68%** (umbral común 0,10), no 36,46%. El
+  segundo mide desempeño contra una etiqueta que incluye quemado no detectado.
 - Contra el crecimiento real, el modelo está por encima de B1 (7,30%) y del trivial
   (8,42%), pero las diferencias siguen siendo modestas y el test contiene solo 7 series y
   25 muestras.
-- **Recall 82,3% con precisión 9,9%**: el modelo acierta *dónde* se va a quemar, pero
-  sobreestima la anchura del frente.
-- **El umbral no es estable**: los óptimos por fold van de 0,10 a 0,50 y el entrenamiento
-  avisa. El umbral congelado (mediana, 0,10) es poco fiable; los números de test hay que
-  leerlos con esa reserva.
+- **El umbral importa más que el modelo**: el mismo `prop_v4_integrity` pasa de 14,68% a
+  10,59% de F1 contra la referencia solo por cambiar de 0,10 a 0,20. Publicar una cifra sin
+  su umbral es publicar un número sin unidad.
 - **El arranque en frío no está representado**: no se publica un desempeño para ese
   escenario y no se fabrica una muestra artificial.
 
@@ -539,6 +518,11 @@ uv run --extra rocm python scripts/audit_dataset_integrity.py \
       --index data/processed/dataset_index.json \
       --output runs/dataset_integrity_production.json
 
+# 3c. Barrer umbrales sobre un run sin reentrenar (una sola pasada de inferencia
+#     por checkpoint; compara Precision, Recall, F1, IoU y area predicha/real)
+uv run --extra rocm python scripts/sweep_thresholds.py \
+      --checkpoint-dir checkpoints/<run> --split test --thresholds 0.1 0.2
+
 # 4. Dataset y entrenamiento con la etiqueta de referencia (diagnóstico)
 uv run --extra rocm python scripts/build_pytorch_dataset.py --target-mode cems \
       --samples-out data/processed_target_cems/samples \
@@ -571,6 +555,13 @@ del mismo dataset producen la misma huella aunque el fichero cambie en `generate
 el índice exacto con el que se entrenó un run concreto (`dataset_index_sha256` en
 `operational_threshold.json`).
 
+> ⚠️ **La huella de contenido es estable en la misma máquina, no entre máquinas.** El
+> índice incorpora la cobertura de la cicatriz de TMB-S3, que se calcula en GPU: un píxel
+> cuyo valor cae justo en el 0,5 puede caer a un lado o al otro según el hardware, y eso
+> cambia el recuento y la huella. En una máquina con el mismo dataset pero otra GPU, la
+> huella sale distinta aunque las 296 muestras, los folds y las bandas de horizonte sean
+> idénticos. Para comparar dos índices, el criterio es el **inventario**, no el hash.
+
 ### Ojo con comparar etiquetas distintas
 
 **Un F1 de una etiqueta no se compara con un F1 de otra.** Cada etiqueta tiene su escala
@@ -579,7 +570,8 @@ Por eso `evaluate_baselines.py` imprime siempre el trivial al lado.
 
 **Y un F1 a un umbral no se compara con un F1 a otro umbral.** `evaluate_baselines.py`
 puede evaluar a cualquier umbral, pero para comparar con el modelo hay que usar el
-**umbral operativo congelado** (0,10 en el run canónico). El umbral también determina qué
+**umbral operativo congelado** (0,20 en el run canónico) o el **umbral común** con el que
+se midieron todos los modelos (0,10). El umbral también determina qué
 píxeles de la verdad cuentan como quemado y, por tanto, qué muestras son evaluables. La
 opción `--operational-threshold-from <dir_de_checkpoints>` aplica a los baselines el mismo
 umbral y el mismo subconjunto que el modelo. La tabla de la sección anterior está medida al
@@ -630,43 +622,43 @@ información disponible que el modelo.
 Donde el número de upstream sí es útil es como referencia de la **calidad del generador de
 cicatriz**, que es el techo de la entrada `x_scar` y, por tanto, el techo de la etiqueta de
 ensamblaje.
-<<<<<<< HEAD
-=======
-### Comparativa M-A vs M-B (diagnóstico, no canónica)
 
-Los runs de comparativa **no están en `artefactos/canonicos.json`**: son diagnóstico, no
-resultado publicable. Se miden sobre el mismo conjunto de test (fold -1, 25 muestras, 7
-series), el mismo umbral operativo (0,10) y las mismas etiquetas que el run canónico.
+### Comparativa M-A vs M-B (diagnóstico)
 
-| Modelo | F1 ensamblaje | F1 referencia | Umbrales óptimos por fold |
-|---|---:|---:|---|
-| **A — desde cero** (`comparativa_scratch`) | **36,51%** | **14,80%** | 0,10 · 0,10 · 0,50 · 0,10 · 0,40 (dispersión 0,40) |
-| **B — M-B preentrenado** (`comparativa_mb_pretrained`) | 34,24% | 12,26% | 0,10 · 0,10 · 0,10 · 0,10 · 0,60 (dispersión 0,50) |
-| **M-A en cero-disparo** (sin ajuste fino) | 19,71% | 10,61% | — (barrido 0,1–0,7; óptimo 0,20 en ensamblaje, 0,10 en referencia) |
+Todos los modelos se evalúan sobre el **mismo test canónico** (fold -1, 25 muestras, 7
+series), con el **mismo índice**, las **mismas etiquetas** y el **mismo subconjunto
+evaluable**; solo cambia el umbral, que se indica en la tabla.
+
+| Modelo | Umbral | F1 ensamblaje | F1 referencia | Precisión (ensamblaje) |
+|---|---:|---:|---:|---:|
+| B0 persistencia | 0,10 | 0,00% | 0,00% | 0,00% |
+| B1 dilatación radial | 0,10 | 15,94% | 7,30% | 19,11% |
+| Trivial "todo quemado" | 0,10 | 16,29% | 8,42% | 9,41% |
+| **M-A** (`mcd_pretrained`, cero-disparo sin CEMS) | 0,10 | **19,71%** | **10,61%** | 14,05% |
+| **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | **30,98%** | **11,80%** | 29,89% |
+| **M-B + Tversky** (`prop_m_b_tversky`, α=0,7, β=0,3) | 0,10 | **32,90%** | **10,08%** | **39,53%** |
+| **Modelo de producción** (`prop_v4_integrity`) | 0,10 | **36,46%** | **14,68%** | 28,40% |
+| **Modelo de producción** (`prop_v4_integrity`) | 0,20 | 39,34% | 10,59% | 33,12% |
 
 Cómo leerlo:
 
-- **"Desde cero" y el run canónico `prop_v4_integrity` dan cifras idénticas.** Misma
-  semilla, misma configuración y mismo dataset: la reproducibilidad del pipeline queda
-  confirmada.
-- **El preentrenamiento no aporta.** M-B queda por debajo de "desde cero" en las dos
-  etiquetas (34,24% vs 36,51% y 12,26% vs 14,80%). Con 7 series y 25 muestras la
-  diferencia **no es significante**, pero no hay ni un indicio a favor del preentrenamiento
-  en este estado. El objetivo de M-A/M-B (§8 de `dataset.md`) sigue abierto.
-- **M-A sin ajuste ya supera a los baselines**, en las dos etiquetas: contra la de
-  ensamblaje, 19,71% frente al 16,29% del trivial y el 15,94% de B1; contra la de
-  referencia, 10,61% frente al 8,42% y el 7,30%. Es decir: **un modelo entrenado solo con
-  etiquetas MODIS ya sitúa el frente por encima de la geometría y del trivial** — pero por
-  debajo del modelo de producción (14,80%).
-- **La cota de M-A es holgada**: el checkpoint evaluado es el de la **epoch 1**, no el de las
-  10 épocas del flujo de §10. Es un mínimo, no el resultado del preentrenamiento completo.
-- **El umbral del M-B es aún menos estable** que el del run canónico: dispersión 0,50 frente
-  a 0,40, con cuatro folds en 0,10 y uno en 0,60.
-
-> Para repetir la comparativa: los dos runs se entrenan con el mismo
-> `data/processed/dataset_index.json` y la misma semilla 42; el segundo añade
-> `--init-checkpoint` (§10). Las métricas por fold están en `runs/comparativa_test.json` y el
-> barrido por umbral de M-A en `runs/m_a_zero_shot.json`.
+- **M-A es una transferencia real**: sin haber visto CEMS ni un solo标签 de propagación,
+  alcanza 19,71% contra la etiqueta de ensamblaje y 10,61% contra la referencia, por encima
+  de B1 (15,94% / 7,30%) y del trivial (16,29% / 8,42%) en las dos etiquetas.
+- **El ajuste fino improves a M-A** en la etiqueta de ensamblaje (30,98% frente a 19,71%),
+  pero **no** en la de referencia (11,80% frente a 10,61%): el salto grande del ajuste es
+  sobre la etiqueta grande, que es la más fácil.
+- **Tversky compra precisión y pierde recall**: sube la precisión al 39,53% y estabiliza el
+  umbral entre folds (0,10–0,20), pero baja el F1 de referencia a 10,08%. Es el
+  commitment de no-sobreestimar el frente, no de acertarlo más.
+- **El modelo de producción sigue dominando** en la etiqueta de referencia (14,68%), que es
+  la única que mide propagación real.
+- **El umbral cambia el número y no el modelo**: a 0,20 el mismo `prop_v4_integrity` sube a
+  39,34% contra la etiqueta de ensamblaje y baja a 10,59% contra la referencia. Por eso el
+  umbral operativo se congela y se publica por separado, y por eso **un F1 de una etiqueta
+  no se compara con un F1 de otra**.
+- **Con 7 series y 25 muestras, ninguna de estas diferencias es estadísticamente
+  concluyente.** Se publican como diagnóstico, no como clasificación de modelos.
 
 ## 10. Preentrenamiento con MCD64A1 (M-A → M-B)
 
@@ -707,7 +699,6 @@ uv run --extra rocm python scripts/train_propagation.py \
 | 6 | M-B inicializa cada fold desde el checkpoint M-A sin romper el entrenamiento desde cero | `dataset.md` §8 |
 
 > **Dónde está el resultado.** La comparación de este pipeline está en §9
-> ("Comparativa M-A vs M-B"): con los runs actuales, **el preentrenamiento no mejora al
-> entrenamiento desde cero**. El flujo está implementado y es reproducible; la conclusión
-> sobre su utilidad todavía no.
->>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
+> ("Comparativa M-A vs M-B"). Con los runs actuales, M-A **ya supera a B1 y al trivial**
+> sin haber visto CEMS, y el ajuste M-B mejora a M-A sobre la etiqueta de ensamblaje pero
+> no sobre la de referencia. El flujo está implementado y es reproducible.

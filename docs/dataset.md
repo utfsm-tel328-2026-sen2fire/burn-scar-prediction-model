@@ -57,11 +57,11 @@ El dataset tiene **tres ejes temporales** y una regla que los une:
 > Es la formulación que **reproduce la operación** (se actualiza cada ~2 días) y hace que el
 > arranque en frío aparezca solo.
 >
-> ✓ **Censo canónico (2026-11-16):** el manifiesto `data/cems_manifest_46.json` contiene
+> ✓ **Censo canónico (2026-11-18):** el manifiesto `data/cems_manifest_46.json` contiene
 > **411 adquisiciones únicas** sobre **44 series candidatas** (414 productos OLCI, 3
-> colapsados por duplicidad). El dataset ensamblado contiene **295 muestras únicas en 40
-> series**: 29 (fold 0), 15 (fold 1), 108 (fold 2), 95 (fold 3), 23 (fold 4) y 25 fuera de
-> dominio (fold -1). Horizonte $h$: mediana 0,897 días, p75 1,042 y máximo 7,024.
+> colapsados por duplicidad). El dataset ensamblado contiene **296 muestras únicas en 40
+> series**: 29 (fold 0), 15 (fold 1), 108 (fold 2), 96 (fold 3), 23 (fold 4) y 25 fuera de
+> dominio (fold -1). Horizonte $h$: mediana 0,903 días, p75 1,042 y máximo 7,024.
 > El inventario completo —incluidas las exclusiones y sus motivos y la cobertura de
 > arranque en frío— vive en `dataset_index.json` y se publica en
 > [`operacion.md`](operacion.md) §9.
