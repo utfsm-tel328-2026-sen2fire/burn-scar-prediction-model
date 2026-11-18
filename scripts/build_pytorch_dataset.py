@@ -39,19 +39,17 @@ from burn_scar.dataset import (
 from burn_scar.models import load_tmb_s3, predict_burn_scar
 from burn_scar.quality import (
     DATASET_INDEX_SCHEMA_VERSION,
+    MAX_NODATA_FRAC,
     atomic_save_npz,
     canonical_json_sha256,
     file_sha256,
     horizon_band,
+    nodata_pixel_fraction,
     scar_coverage,
     summarize_horizons,
     summarize_scar_coverage,
     validate_static_layers,
 )
-
-# Una adquisición con más de este porcentaje de píxeles sin dato se descarta
-# (mismo criterio que la ficha del dataset TMB-S3 upstream).
-MAX_NODATA_FRAC = 0.20
 
 # Longitud de la ventana temporal: 1 frame pre-incendio + 6 post-incendio (BL1)
 WINDOW_LEN = 7
@@ -281,14 +279,20 @@ def main() -> int:
             # umbral del 20% se mide sobre píxeles, no sobre celdas de banda
             # (D3): contar celdas hacía que un píxel con cuatro bandas
             # válidas casi vacías y otro completamente muerto pesaran igual.
-            fill_frac = float((~valid.all(axis=0)).mean())
+            fill_frac = nodata_pixel_fraction(valid)
+            # Diagnóstico: veredicto bajo la medida por celda de banda
+            # (criterio anterior). Detecta frames cuyo veredicto depende de la
+            # unidad de medida, que es donde se esconden los errores de
+            # criterio como el que motivó esta corrección.
             fill_frac_celda = float((~valid).mean())
             has_signal = bool(valid.any()) and float(b5[valid].max()) > 0.0
             n_adquisiciones_evaluadas += 1
-            if fill_frac > MAX_NODATA_FRAC or not has_signal:
+            descartada_px = fill_frac > MAX_NODATA_FRAC
+            descartada_celda = fill_frac_celda > MAX_NODATA_FRAC
+            if descartada_px != descartada_celda:
+                n_adquisiciones_cambio_criterio += 1
+            if descartada_px or not has_signal:
                 n_adquisiciones_descartadas += 1
-                if fill_frac_celda <= MAX_NODATA_FRAC:
-                    n_adquisiciones_cambio_criterio += 1
                 continue
             frame_cache[fname] = (b5, valid)
 
@@ -566,8 +570,8 @@ def main() -> int:
     print(f"  Adquisiciones evaluadas:         {n_adquisiciones_evaluadas}")
     print(f"  Adquisiciones descartadas:       {n_adquisiciones_descartadas}")
     print(
-        f"  Descartadas por el criterio de píxeles: {n_adquisiciones_cambio_criterio} "
-        f"(se habrían conservado midiendo sobre celdas de banda)"
+        f"  Veredicto dependiente de la unidad de medida: {n_adquisiciones_cambio_criterio} "
+        f"(píxel sin banda válida vs celda de banda)"
     )
     print("-" * 72)
     print(f"Archivo de índice guardado en: {args.index_out}")

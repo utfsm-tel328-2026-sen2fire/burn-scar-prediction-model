@@ -19,6 +19,7 @@ CANONICAL_INDEX_CEMS = Path("data/processed_target_cems/dataset_index.json")
 OPERACION = Path("docs/operacion.md")
 DATASET_DOC = Path("docs/dataset.md")
 DECISIONES = Path("docs/decisiones.md")
+DOCS_DIR = Path("docs")
 README = Path("README.md")
 
 
@@ -177,3 +178,65 @@ def test_el_manifiesto_de_artefactos_declara_la_procedencia_de_los_runs():
         assert len(entry["checkpoints"]) == 5, f"{label} no tiene cinco checkpoints"
         for checkpoint in entry["checkpoints"]:
             assert len(checkpoint["file_sha256"]) == 64
+
+
+def _documentos() -> list[Path]:
+    return [README, *sorted(DOCS_DIR.glob("*.md"))]
+
+
+def test_la_documentacion_no_tiene_marcadores_de_conflicto():
+    """Un conflicto sin resolver deja el documento roto (y ya ha pasado dos veces)."""
+    for document in _documentos():
+        if not document.exists():
+            continue
+        for numero, linea in enumerate(document.read_text(encoding="utf-8").split("\n"), 1):
+            if linea.startswith(("<<<<<<<", ">>>>>>>")) or linea.strip() == "=======":
+                raise AssertionError(
+                    f"{document}:{numero} tiene un marcador de conflicto sin resolver: {linea!r}"
+                )
+
+
+def test_las_reglas_del_dataset_estan_documentadas_sin_huecos():
+    """Las reglas D1..Dn son el contrato del ensamblador: si hay una más, está documentada."""
+    text = DATASET_DOC.read_text(encoding="utf-8")
+    numeros = sorted({int(n) for n in re.findall(r"\|\s*\*\*D(\d+)\*\*\s*\|", text)})
+    assert numeros, "no se ha encontrado ninguna regla D en dataset.md"
+    assert numeros == list(range(1, max(numeros) + 1)), (
+        f"las reglas D tienen huecos: {numeros}"
+    )
+
+
+def test_el_estado_de_los_baselines_coincide_con_el_codigo():
+    """La documentación no puede afirmar que un baseline está implementado si no lo está."""
+    source = Path("src/burn_scar/baselines.py")
+    if not source.exists():
+        pytest.skip("src/burn_scar/baselines.py no encontrado")
+    codigo = source.read_text(encoding="utf-8")
+    texto = _normalized(DATASET_DOC.read_text(encoding="utf-8"))
+
+    b2_implementado = "B2" in codigo or "Advection" in codigo or "advection" in codigo
+    if b2_implementado:
+        assert "B2" in texto
+    else:
+        assert re.search(r"B2[^\n]*pendiente", texto), (
+            "dataset.md debe declarar que B2 (advección por viento) está pendiente"
+        )
+
+
+def test_los_scripts_mencionados_en_la_documentacion_existen():
+    for document in _documentos():
+        if not document.exists():
+            continue
+        for script in re.findall(r"scripts/([a-z0-9_]+\.py)", document.read_text(encoding="utf-8")):
+            assert Path("scripts", script).exists(), (
+                f"{document} menciona scripts/{script}, que no existe"
+            )
+
+
+def test_la_comparativa_de_preentrenamiento_esta_documentada():
+    """La comparación M-A vs M-B es un resultado del proyecto: tiene que estar escrita."""
+    texto = _normalized(OPERACION.read_text(encoding="utf-8"))
+    assert "Comparativa M-A vs M-B" in texto
+    for run in ("comparativa_scratch", "comparativa_mb_pretrained"):
+        assert run in texto, f"la comparativa no menciona el run {run}"
+    assert "m_a_zero_shot.json" in texto

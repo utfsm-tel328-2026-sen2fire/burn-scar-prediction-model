@@ -16,6 +16,10 @@ DATASET_INDEX_SCHEMA_VERSION = 2
 # ausencia de dato y nunca debe entrar en el tensor del modelo.
 WORLDCOVER_VALID_CLASSES = frozenset({10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100})
 
+# Adquisición descartada cuando más de este porcentaje de sus píxeles no
+# tienen NINGUNA banda válida (D19).
+MAX_NODATA_FRAC = 0.20
+
 HORIZON_BAND_SPECS = (
     ("0-1d", 0.0, 1.0),
     ("1-3d", 1.0, 3.0),
@@ -27,6 +31,25 @@ HORIZON_BAND_SPECS = (
 
 class StaticLayerValidationError(ValueError):
     """Las capas estáticas requeridas no son utilizables."""
+
+
+def nodata_pixel_fraction(valid: np.ndarray) -> float:
+    """
+    Porcentaje de píxeles de un frame que no tienen ninguna banda válida.
+
+    `valid` es booleano y tiene forma (bandas, H, W). Un píxel carece de dato
+    solo si NO tiene ninguna banda válida; un píxel parcialmente observado
+    cuenta como observado, porque su celda ausente se sustituye por la media
+    de la banda al guardar el tensor (D19).
+
+    El criterio se mide sobre píxeles, no sobre celdas de banda: medir por
+    celdas ataba el umbral al número de bandas y trataba igual un píxel con
+    cuatro bandas válidas que uno completamente muerto.
+    """
+    array = np.asarray(valid)
+    if array.ndim != 3:
+        raise ValueError(f"valid debe tener forma (bandas, H, W), no {array.shape}")
+    return float((~array.any(axis=0)).mean())
 
 
 def file_sha256(path: str | Path) -> str:

@@ -41,7 +41,8 @@ def load_tmb_s3(
     if not weights_path.exists():
         raise FileNotFoundError(
             f"No se encontraron los pesos de TMB-S3 en: {weights_path}. "
-            "Asegúrate de haber descargado el checkpoint desde links-ads/tmb-s3."
+            "Asegúrate de haber descargado el checkpoint desde links-ads/tmb-s3-models "
+            "(el repo de modelos; el de datos es links-ads/tmb-s3)."
         )
 
     # MiniSegFormer configurado para 5 bandas + landcover (in_channels = 6 + hidden_ch 64 = 70)

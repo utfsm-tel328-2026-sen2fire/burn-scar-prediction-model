@@ -30,8 +30,8 @@ import numpy as np
 import torch
 
 from burn_scar.models import load_tmb_s3, predict_burn_scar
+from burn_scar.quality import MAX_NODATA_FRAC, nodata_pixel_fraction
 
-MAX_NODATA_FRAC = 0.20
 WINDOW_LEN = 7
 DEFAULT_HORIZONS = [1, 2, 3, 5, 7, 10, 14]
 
@@ -144,7 +144,10 @@ def main() -> int:
             b5 = raw_bands[[3, 5, 7, 16, 20]] if raw_bands.shape[0] == 22 else raw_bands[:5]
             b5 = b5.astype(np.float32)
             valid = (b5 > 0) & (b5 < 32768)
-            fill_frac = float((~valid).mean())
+            # Criterio D19: el umbral del 20% se mide sobre PÍXELES sin ninguna banda
+            # válida, no sobre celdas de banda (mismo criterio que el ensamblador de
+            # CEMS; un píxel parcialmente observado cuenta como observado).
+            fill_frac = nodata_pixel_fraction(valid)
             has_signal = bool(valid.any()) and float(b5[valid].max()) > 0.0
             if fill_frac > MAX_NODATA_FRAC or not has_signal:
                 continue
