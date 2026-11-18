@@ -27,7 +27,7 @@ son siglas o nombres en inglés.
 | **TOA** | *Top-of-atmosphere*. Reflectancia/radiancia medida en el sensor, sin corregir a superficie |
 | **Regla OR** | Se marca un píxel como quemado si **cualquier** píxel de 10 m dentro lo está. Infla el área |
 | **Target (objetivo)** | Lo que hay que acertar: el mapa de probabilidad de quema en el horizonte pedido |
-| **Baseline (modelo de referencia)** | B0, B1 y B2: modelos sin aprendizaje automático contra los que se compara el nuestro |
+| **Baseline (modelo de referencia)** | B0 y B1, más el trivial "todo quemado": referencias sin aprendizaje automático contra las que se compara el nuestro |
 | **Ground truth (GT)** | La "verdad" contra la que se mide el modelo |
 | **Split** | Cómo se reparte el dataset en train / validación / test |
 | **Fuga espacial** | Que el mismo incendio (o su vecino) aparezca en train y test. Infla los resultados |
@@ -177,8 +177,8 @@ reproducible:**
 2. **CEMS no puede darte esa capacidad**: sus rondas son irregulares, así que sola te da
    los horizontes que el analista eligió. MCD64A1 sí: en el preentrenamiento se muestrean
    *h* de una rejilla amplia `{1, 2, 3, 5, 7, 10, 14}` días, lo que da 7 muestras por frame.
-3. **Hace comparables los baselines**: B2 (advección por viento) se define naturalmente
-   para un *h* dado, así que la comparación es directa.
+3. **Hace comparables los baselines**: B1 (dilatación radial) se define naturalmente para
+   un *h* dado, así que la comparación es directa.
 
 Los horizontes reales de CEMS pueden quedar fuera de la rejilla (una ronda muy tardía);
 en ese caso se acota *h* al rango entrenado y se reporta cuántos samples caen fuera.
@@ -211,7 +211,9 @@ TMB-S3 no pudo producir una predicción utilizable se tratan como arranque en fr
 > delineaciones + 96 FEP, por eso la mediana de *rondas* es 3 y la de *productos* 4 (media
 > 4,74 vs 5,74). **El FEP se excluye de la serie de etiquetas** (D5, §7): es una estimación
 > de baja resolución y meterla metería un borde grueso. El nº de frames OLCI por AOI (el eje
-> T, §2) es otro dato y está sin medir (P7).
+> T, §2) es otro dato, y **está medido en el censo canónico**: 411 adquisiciones únicas
+> sobre 44 series candidatas, de las que el ensamblador publica 296 muestras en 40 series
+> (P7, cerrado; detalle en [`operacion.md`](operacion.md) §9).
 
 Añadiendo el periodo pre-2023 (2012-2022, accesible por otra vía, decisiones.md §2 R1) el total
 mediterráneo sube a **~162 series y ~490 transiciones**. ⚠️ Con la auditoría de splits
@@ -229,6 +231,11 @@ Con 300 m y un AOI mediano de 370 km² (4.107 píxeles):
 | S1 + ERA5 + estáticas + cicatriz conocida | ~755 KB | ~72 MB | ~35 MB |
 | Etiquetas + máscaras de validez | ~60 KB | ~6 MB | ~3 MB |
 | **Total** | **~1,2 MB** | **~115 MB** | **~55 MB** |
+
+> ⚠️ **Estas cifras son la proyección de diseño**, e incluyen Sentinel-1 y ERA5, que son
+> **v2** y no entran en el modelo entrenado (decisiones.md §1.2, P2). El dataset canónico
+> actual lleva OLCI + DEM + WorldCover + cicatriz + etiquetas, así que pesa **menos** que lo
+> que dice esta tabla. La ventana real es de **7** frames, no 10.
 
 El peso real lo llevan unos pocos AOIs enormes (EMSR837 tiene 10.034 km², 111.489 píxeles).
 
@@ -357,7 +364,7 @@ especificación que se implementa y la que se revisa al auditar una etiqueta.
 | **D7** | **Sensor y `observed_time` de cada ronda**, siempre, en los metadatos del índice | Permite estratificar (R14) y auditar cualquier muestra |
 | **D8** | **Split por cluster geográfico**, nunca aleatorio | Fuga espacial (R5) |
 | **D9** | **El target se mide desde *f*, no desde la ronda anterior** | `polígono(r+1) − scar_TMB3(f)`, no `polígono(r+1) − polígono(r)`. Medir desde la ronda cuenta quemado ya visible (§2) |
-| **D10** | **El horizonte *h* es una entrada del modelo** | Sin él no se puede derivar el perímetro final "agregando horizontes", ni comparar limpiamente con B2 (§2) |
+| **D10** | **El horizonte *h* es una entrada del modelo** | Sin él no se puede derivar el perímetro final "agregando horizontes", ni comparar limpiamente con B1 (§2) |
 | **D11** | **El preentrenamiento excluye los eventos que se solapan en espacio y tiempo con test y val** | Si no, la afirmación de generalización espacial no es verificable (R20) |
 | **D12** | **Etiquetas de preentrenamiento a 300 m por *nearest*** | La arquitectura y la resolución no cambian entre fases; solo el target del preentrenamiento sale en bloques de 500 m |
 | **D13** | **Del dataset CEMS se excluyen los 50 eventos en el `train`/`val` de TMB-S3** | En ellos la cicatriz de entrada es el perímetro CEMS memorizado, y el target significa "crecimiento entre rondas" en vez de "crecimiento después de *f*". Quedan 46 series (decisiones.md §3, R18) |
@@ -479,13 +486,16 @@ contra CEMS con la misma solidez, y no tiene la cobertura temporal de TMB-S3.
 | **B0** | Persistencia | El fuego no crece | Suelo trivial | implementado |
 | **B1** | Dilatación radial | El frente avanza isotropemente | Geometría pura | implementado |
 | — | Todo quemado | Predice quemado en todo el mapa | La **escala mínima** de cada etiqueta: por debajo, no se ha aprendido nada | implementado |
-| **B2** | **Advección por viento** | El frente avanza en la dirección del viento | **Física sin ML** | **pendiente** (P2) |
+| **B2** | Advección por viento | El frente avanza en la dirección del viento | Física sin ML | **fuera de alcance** (P2) |
 
-> **Criterio de aceptación: el modelo debe superar B2 en F1 de área recién quemada.**
-> Si una red no bate "mueve el frente según el viento", no está aprendiendo propagación:
-> está aprendiendo a rellenar ruido. B2 todavía **no está implementado**: definirlo con
-> precisión (qué viento, qué velocidad de avance) es la pendiente P2 de
-> [`decisiones.md`](decisiones.md) §1.2, y es lo que bloquea la evaluación.
+> **Criterio de aceptación: el modelo debe superar a B1 (dilatación radial) y al trivial
+> "todo quemado"**, medidos al mismo umbral y sobre el mismo subconjunto evaluable. Si una
+> red no bate ni "dilata el frente isométricamente" ni "quema todo", no está aprendiendo
+> propagación: está aprendiendo a rellenar ruido.
+>
+> **B2 queda fuera del alcance del proyecto**: no se implementa ni el canal meteorológico
+> (ERA5/GFS) que necesitaría. La decisión y su motivo están en
+> [`decisiones.md`](decisiones.md) §1.2 (P2).
 
 ## 10. Protocolo de evaluación
 
@@ -500,11 +510,11 @@ evaluación.
 | **Métrica principal** | F1 del área **nuevamente quemada**, **promedio por evento** (un evento = una serie; dentro de la serie, promedio de sus muestras) |
 | **Incertidumbre** | Dispersión **entre folds**: el F1 por evento se reporta como media ± desviación típica de los 5 folds, y el umbral operativo se congela con la mediana de los umbrales óptimos por fold (su dispersión se publica aparte) |
 | **Métrica secundaria** | F1 agregado por píxel, para poder comparar con WSTS y TS-SatFire |
-| **Binarización** | Umbral **0,5 fijado de antemano**, sin calibrar (como TMB-S3) |
+| **Binarización** | El modelo es probabilístico, así que se reportan por separado el F1 a **umbral fijo 0,5** (como TMB-S3), el F1 en el **mejor umbral** y el F1 al **umbral operativo congelado** (mediana de los umbrales óptimos por fold; **0,20** en el run canónico). La comparación entre modelos se hace además a un **umbral común de 0,10** (operacion.md §9) |
 | **Máscara** | Solo píxeles válidos: `valido(r+1)` (§7 D3). `valido(r)` no interviene: con D9 el perímetro de la ronda anterior ya no entra en el target |
 | **Estratificación obligatoria** | **Pendiente de implementar.** El índice guarda el sensor de cada ronda (`sensor_from`, `sensor_to`, `sensor_changed`) y la marca de control de TMB-S3 (`in_tmb_test`), pero **ningún script de evaluación los usa todavía**: hoy no se publica el subconjunto "limpio" ni el estrato de TMB-S3. Es una deuda conocida (decisiones.md §2 R14) |
 | **Estrato TMB-S3** | **Pendiente de implementar**: las series del `test` de TMB-S3 están marcadas en el manifiesto (`in_tmb_test`), pero todavía no se reportan aparte. Miden si TMB-S3 generaliza de verdad (decisiones.md §3) |
-| **Comparación** | Todos los baselines (B0, B1 y, cuando exista, B2) se evalúan **con el mismo protocolo y los mismos folds** que el modelo, y se reportan los dos modelos (M-A sin ajuste, M-B con ajuste) |
+| **Comparación** | Todos los baselines (B0, B1 y el trivial "todo quemado") se evalúan **con el mismo protocolo y los mismos folds** que el modelo, y se reportan los dos modelos (M-A sin ajuste, M-B con ajuste) |
 | **Denominadores** | La evaluación informa por separado de **entradas, muestras únicas, ficheros únicos, series y muestras evaluables**, y usa un único descriptivo (`evaluated_set`) para el modelo y para los baselines. Un índice con `sample_id` o rutas repetidos se rechaza antes de calcular métricas |
 | **Bandas de horizonte** | Las métricas se reportan también por banda `(0,1]`, `(1,3]`, `(3,7]`, `(7,14]` y `(14,+inf)`, **solo como diagnóstico**. Las métricas globales se calculan sobre **todas** las muestras únicas: ninguna banda filtra el entrenamiento ni la evaluación, y no hay horizonte máximo |
 | **Arranque en frío** | El estrato de arranque en frío se reporta **con su estado**: si el conjunto no contiene ninguna muestra con `x_scar` vacío, se declara "no representado" y **no se publica un desempeño** para ese escenario |
@@ -513,7 +523,7 @@ evaluación.
 > **Por qué el promedio por evento y no por píxel.** Agregar por píxel hace que un solo AOI
 > enorme (EMSR837 tiene 111.489 píxeles, 27 veces la mediana) domine la métrica. Con pocas
 > series evaluadas, además, cualquier diferencia pequeña está dentro del ruido: sin una
-> medida de dispersión, "el modelo bate a B2" no es una afirmación verificable.
+> medida de dispersión, "el modelo bate a B1" no es una afirmación verificable.
 
 ---
 
@@ -529,6 +539,51 @@ comandos exactos y las latencias están en [`operacion.md`](operacion.md) §8.
 | 3 | **Vectores CEMS** | `scripts/download_cems_vectors.py` | GeoJSON por ronda: `observedEventA` (quemado) y `notAnalysedA` (no observado) |
 | 4 | **Rasterización** | `scripts/rasterize_cems_labels.py` | Etiquetas fraccionales a 300 m en 64×64, con máscara tri-estado (D2, D3, D17) |
 | 5 | **Imágenes y ensamblaje** | `scripts/download_gee_olci.py` → `scripts/build_pytorch_dataset.py` | Parches OLCI + DEM + WorldCover, cicatriz de TMB-S3, ventana temporal de 7 frames y el índice |
+
+### Los comandos, en orden
+
+```bash
+# 1. Auditoría de splits. Solo metadatos: lee el manifest de TMB-S3 (Hugging Face)
+#    y el censo de CEMS (API pública). No descarga imagen.
+uv run python scripts/audit_tmb_splits.py --json runs/audit_results.json
+
+# 2. Manifiesto CEMS + catálogo OLCI, a partir de la auditoría.
+uv run python scripts/build_cems_manifest.py \
+      --audit-json runs/audit_results.json \
+      --output data/cems_manifest_46.json
+
+# 3. Vectores CEMS por ronda (GeoJSON). Es el paso más lento: va contra la API
+#    de CEMS, que limita el ritmo; --workers 8 es un buen punto de partida.
+uv run python scripts/download_cems_vectors.py \
+      --manifest data/cems_manifest_46.json \
+      --output-dir data/raw/cems
+
+# 4. Rasterización de las etiquetas a 300 m en 64×64 (fracción quemada + máscara).
+uv run python scripts/rasterize_cems_labels.py \
+      --manifest data/cems_manifest_46.json \
+      --raw-dir data/raw/cems \
+      --output-dir data/processed/cems_labels
+
+# 5a. Imágenes: OLCI + DEM + WorldCover vía Earth Engine. Es reanudable: si el
+#     fichero ya existe, no lo vuelve a bajar (se puede relanzar sin miedo).
+uv run python scripts/download_gee_olci.py \
+      --manifest data/cems_manifest_46.json \
+      --olci-dir data/raw/s3_olci \
+      --static-dir data/raw/static
+
+# 5b. Ensamblaje: ventana temporal, cicatriz de TMB-S3, targets e índice.
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+```
+
+Todos los scripts aceptan sus rutas por defecto (el único argumento que hay que pasar
+explicitamente es el `--json` de la auditoría, que es el que encadena con el paso 2), así que
+la secuencia se puede lanzar tal cual. Los pasos 1-4 no necesitan GPU; el 5b sí (calcula la
+cicatriz de TMB-S3 en ella) y tarda ~20 s con el dataset vigente.
+
+> **Requisitos previos**: cuenta de Google Earth Engine con el proyecto registrado
+> ([`operacion.md`](operacion.md) §6.1) y el checkpoint de TMB-S3 descargado en
+> `models/tmb_s3/` (README, paso 1b). Sin el checkpoint, el paso 5b falla con un mensaje
+> explícito.
 
 **Los pasos 3-5 son la cadena que hay que repetir tras cualquier cambio** en el generador
 de cicatriz, en la ventana temporal o en las reglas de filtrado: la cicatriz y el target

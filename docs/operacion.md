@@ -170,7 +170,8 @@ un experimento barato y no toca el resto de la cadena de procesamiento.
   T+0 h    Detección de hotspot (FIRMS / VIIRS / GOES)
            -> se abre un "evento"
   T+3 h    Llega OLCI NRT
-           Descarga: OLCI, ERA5/GFAS, GFS forecast, DEM, WorldCover (+ S1 en la v2)
+           Descarga: OLCI, DEM, WorldCover
+           (meteorología y Sentinel-1 quedan para la v2)
   T+3,5 h  TMB-S3 -> cicatriz actual (congelado)
            Modelo -> mapa de probabilidad de quemado a h (1, 3, 7 días)
   T+2-3 d  Llega el siguiente OLCI -> se repite
@@ -266,7 +267,7 @@ con código 1 si algo no está listo.
 |---|---|
 | **Cicatriz de entrada generada por TMB-S3 (congelado)** | Quita CEMS del camino de inferencia sin tren/test shift: en las tres fases la cicatriz sale del mismo modelo (dataset.md §8, §4) |
 | **Horizonte anclado en la última observación** | Si no, el modelo se entrena con horizontes que nunca tendrá en operación (§2) |
-| **El horizonte *h* es una entrada explícita** | Necesario para derivar el perímetro final "agregando horizontes" y para comparar limpiamente con el baseline B2 (dataset.md §2, D10) |
+| **El horizonte *h* es una entrada explícita** | Necesario para derivar el perímetro final "agregando horizontes" y para comparar limpiamente con el baseline B1 (dataset.md §2, D10) |
 | **Muestra por frame OLCI**, no por ronda CEMS | Reproduce la cadencia de operación y da más muestras (dataset.md §2) |
 | **Preentrenamiento con MCD64A1 como supervisor, no como entrada** | MCD64A1 tiene ~6 semanas de latencia: sería imposible en operación, pero es un supervisor de milhões de etiquetas. Nunca entra en inferencia (dataset.md §8) |
 | **El target se mide desde *f*, no desde la ronda anterior** | `polígono(r+1) − scar_TMB3(f)`: medir desde la ronda cuenta quemado ya visible en la imagen (dataset.md §2, D9) |
@@ -275,8 +276,8 @@ con código 1 si algo no está listo.
 | **Validación cruzada agrupada en vez de split fijo** | Con 46 series, un reparto fijo evalúa 9 y desperdicia 37 (dataset.md §5) |
 | **Dos etapas, ambas evaluables (M-A y M-B)** | El ajuste CEMS es una inicialización: reportar los dos modelos convierte el conjunto pequeño en el diseño del experimento (dataset.md §8) |
 | **La evaluación es siempre contra CEMS** | CEMS lo dibujaron analistas con otras imágenes; con FireCCI S3.1.1 el modelo podría replicar su clasificador en vez de aprender física (investigacion.md §2, R21) |
-| **La entrada de meteo necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast) |
-| **FIRMS/VIIRS como canal adicional** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
+| **La entrada de meteo (v2) necesita viento de pronóstico**, no solo análisis | ERA5-Land es análisis del pasado; para predecir el futuro hace falta GFS/ECMWF forecast. La literatura lo hace así (FireCast usa viento; WSTS meteo + forecast). **Queda fuera del alcance actual**: el modelo entrenado no consume meteo (decisiones.md §1.2, P2) |
+| **FIRMS/VIIRS como canal adicional (v2)** | Es la señal más timely que existe sobre dónde está el fuego ahora mismo. Ruidosa y a 375 m, pero aporta el ancla en tiempo real |
 
 ## 8. Regenerar el dataset y lanzar runs largos
 
@@ -470,6 +471,14 @@ modelos se hace además a un **umbral común de 0,10**, que es donde se comparan
 > la cicatriz— **tampoco es estable entre máquinas**: es estable entre regeneraciones en la
 > misma, que es lo que garantiza.
 
+> **Dónde están los números, para que se puedan comprobar.** Los resultados publicables van
+> versionados en [`artefactos/resultados/`](../artefactos/resultados/README.md): los
+> **baselines** sobre el dataset canónico (que reproducen exactamente las filas de esta
+> sección), las **auditorías de integridad** de los dos índices y una **reproducción local**
+> del run con su umbral, sus huellas y su barrido de umbrales. Lo que **no** está
+> versionado es el JSON de métricas del run publicado (vive en la máquina de origen); de él
+> quedan las sumas de verificación en `artefactos/canonicos.json`.
+
 La CV diagnóstica `prop_cems_diag_v4_integrity` usa su propio dataset, su propia semilla y su
 propio umbral congelado (0,10, con dispersión 0,30) y obtiene 9,43% contra ambas etiquetas
 sobre 23/25 muestras; al cambiar etiqueta, umbral y subconjunto, **no es comparable
@@ -574,8 +583,9 @@ puede evaluar a cualquier umbral, pero para comparar con el modelo hay que usar 
 se midieron todos los modelos (0,10). El umbral también determina qué
 píxeles de la verdad cuentan como quemado y, por tanto, qué muestras son evaluables. La
 opción `--operational-threshold-from <dir_de_checkpoints>` aplica a los baselines el mismo
-umbral y el mismo subconjunto que el modelo. La tabla de la sección anterior está medida al
-umbral operativo para todos.
+umbral y el mismo subconjunto que el modelo. Las tablas de la sección anterior están
+medidas **al umbral común 0,10 para todos los modelos**, con una fila adicional del
+modelo de producción a su umbral operativo 0,20.
 
 ### Qué cuenta como evaluable, y qué significan las máscaras
 
@@ -597,23 +607,31 @@ el recuento es parte del número, no un detalle del informe. Cuando una muestra 
 ronda CEMS previa, su validez común es íntegramente `255` y su métrica contra la etiqueta de
 referencia no es informativa: cuenta como no evaluable, no como un cero.
 
-Medido sobre los conjuntos canónicos al umbral operativo 0,10:
+Medido sobre el **dataset canónico de 296 muestras** (validación: 29 + 15 + 108 + 96 + 23 =
+271; test: 25). Una muestra es evaluable cuando la verdad contiene quemado por encima del
+umbral, así que **el recuento depende de la etiqueta y del umbral, no del modelo**:
 
-| Conjunto | Etiqueta | Series evaluables | Muestras evaluables |
-|---|---|---|---|
-| Validación (folds 0-4, 270 muestras) | De ensamblaje | 33/33 | 256/270 |
-| Validación (folds 0-4, 270 muestras) | De referencia | 33/33 | 238/270 |
-| Test (fold -1, 25 muestras) | De ensamblaje | 7/7 | 24/25 |
-| Test (fold -1, 25 muestras) | De referencia | 7/7 | 23/25 |
+| Conjunto | Etiqueta | Series evaluables | Evaluables @0,10 | Evaluables @0,20 |
+|---|---|---|---:|---:|
+| Validación (folds 0-4, 271 muestras, 33 series) | De ensamblaje | 33/33 | 257/271 | 251/271 |
+| Validación (folds 0-4, 271 muestras, 33 series) | De referencia | 33/33 | 239/271 | 224/271 |
+| Test (fold -1, 25 muestras, 7 series) | De ensamblaje | 7/7 | 24/25 | 24/25 |
+| Test (fold -1, 25 muestras, 7 series) | De referencia | 7/7 | 23/25 | 23/25 |
+
+Estos recuentos se derivan **solo de la verdad y del umbral**, así que son reproducibles
+con cualquier modelo: si cambian, lo que ha cambiado es el dataset o el umbral, no el
+entrenamiento.
 
 ### Sobre la comparación con TMB-S3 upstream
 
 TMB-S3 upstream evalúa **detección** de quemado: mira imágenes donde el fuego ya está y
 etiqueta qué está quemado, con etiquetas derivadas de MCD64A1 y una regla "OR" que infla el
-área un 34%. Su F1 de 69,45 / IoU 59,81 es de **su propio test set y sus propias etiquetas**.
+área un 34%. Su F1 de **65,5-68,2** (IoU 56,7-58,7, media de 3 semillas; solo los 4
+checkpoints SegFormer publicados — datos.md §5.1) es de **su propio test set y sus propias
+etiquetas**.
 
 Este proyecto evalúa **pronóstico**: predecir qué se quemará en las próximas horas, con la
-etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que el 69,45 no es una
+etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que ese F1 no es una
 meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **el trivial "todo
 quemado"** y **B1**, medidos al mismo umbral operativo que el modelo (16,29% y 15,94%
 contra la etiqueta de ensamblaje; 8,42% y 7,30% contra la referencia), porque usan la misma
@@ -642,7 +660,7 @@ evaluable**; solo cambia el umbral, que se indica en la tabla.
 
 Cómo leerlo:
 
-- **M-A es una transferencia real**: sin haber visto CEMS ni un solo标签 de propagación,
+- **M-A es una transferencia real**: sin haber visto CEMS ni una sola etiqueta de propagación,
   alcanza 19,71% contra la etiqueta de ensamblaje y 10,61% contra la referencia, por encima
   de B1 (15,94% / 7,30%) y del trivial (16,29% / 8,42%) en las dos etiquetas.
 - **El ajuste fino improves a M-A** en la etiqueta de ensamblaje (30,98% frente a 19,71%),

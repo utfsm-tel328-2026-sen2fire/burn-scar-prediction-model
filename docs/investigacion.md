@@ -20,10 +20,11 @@ NextDayWildfireSpread) mete meteorología, topografía y combustible como entrad
 modelo puramente imagen→imagen aprende el prior "el fuego sigue donde iba", que funciona
 mientras el viento no cambie y falla justo en los casos que importan.
 
-Por eso el proyecto usa **imágenes abiertas + variables meteorológicas y de terreno
-abiertas** (ERA5/GFAS, Copernicus DEM, WorldCover). Nada de esto tiene coste ni licencia
-comercial. **Hoy el modelo entrenado solo consume imagen y terreno**; la meteorología es el
-siguiente paso, y la razón de que esté planeada es precisamente la que da este apartado.
+Por eso el proyecto se apoya en **datos abiertos de imagen y de terreno** (Sentinel-3 OLCI,
+Copernicus DEM, WorldCover): nada de esto tiene coste ni licencia comercial. **Hoy el
+modelo entrenado solo consume imagen y terreno** — la meteorología (ERA5/GFAS, GFS) queda
+**fuera del alcance** (decisiones.md §1.2, P2), y la razón de que esté documentada aquí es
+precisamente la que da este apartado.
 
 **El enfoque elegido:**
 
@@ -45,7 +46,7 @@ memoria 50 de ellas (operacion.md §4). De esas 46, el manifiesto conserva 44 y 
 publicado **40 series** con 296 muestras. Es el principal frente abierto y la razón de
 las dos palancas de ampliación (decisiones.md §4).
 
-**Las tres decisiones que definen el proyecto**, y que se互补an:
+**Las tres decisiones que definen el proyecto**, y que se complementan:
 
 1. **La cicatriz la pone TMB-S3, congelado.** Quita CEMS del camino de inferencia sin
    crear un desajuste entre entrenamiento y operación: la cicatriz siempre sale de un

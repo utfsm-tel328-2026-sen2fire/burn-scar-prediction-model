@@ -62,6 +62,9 @@ Dos cosas que conviene saber antes de citar cifras:
   mismo umbral y el mismo subconjunto evaluable** que el modelo de producción (tabla
   arriba). `M-A` ya supera a B1 y al trivial sin haber visto CEMS; el ajuste `M-B` mejora a
   `M-A`, pero todavía no supera al entrenamiento desde cero.
+- Las cifras son **comprobables**: los JSON de resultados (baselines sobre el dataset
+  canónico, auditorías de integridad y una reproducción local del run) están versionados en
+  [`artefactos/resultados/`](artefactos/resultados/README.md).
 
 ## Puesta en marcha
 
@@ -78,8 +81,9 @@ uv run python -c "from huggingface_hub import snapshot_download; \
 #     -> models/tmb_s3/convlstm_segformer_prepost_subset/model.safetensors
 
 # 2. Dataset. No se versiona en Git: cada máquina genera el suyo (~20 s en GPU).
-#    Requiere las descargas previas (CEMS, OLCI, DEM y WorldCover):
-#    el pipeline completo está en docs/dataset.md §11.
+#    El pipeline completo, desde cero (auditoría -> manifiesto -> vectores CEMS ->
+#    rasterización -> OLCI/DEM/WorldCover -> ensamblaje), está con sus comandos
+#    en docs/dataset.md §11. El paso final, si el dataset ya está descargado:
 uv run --extra rocm python scripts/build_pytorch_dataset.py
 
 # 3. Baselines de referencia (B0, B1 y el trivial "todo quemado")
@@ -169,7 +173,7 @@ La auditoría reproducible del dataset, el barrido de umbrales y la procedencia 
 ├── scripts/       # ingesta, ensamblado, entrenamiento, evaluación y auditoría
 ├── tests/
 ├── openspec/      # flujo de trabajo OpenSpec (specs de dataset, evaluación, entorno y tracking)
-├── artefactos/    # sumas de verificación de los artefactos canónicos
+├── artefactos/    # sumas de verificación y resultados publicables (ver artefactos/resultados/)
 ├── pyproject.toml
 └── .env.example
 ```

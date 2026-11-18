@@ -24,7 +24,10 @@
 
 Fuera de `docs/`, `artefactos/canonicos.json` registra las sumas de verificación de los
 índices de dataset, del umbral operativo y de los checkpoints del run canónico; se
-comprueba con `scripts/verify_canonical_artifacts.py`.
+comprueba con `scripts/verify_canonical_artifacts.py`. En `artefactos/resultados/` están
+los **JSON de resultados publicables** (baselines sobre el dataset canónico, auditorías de
+integridad y una reproducción local del run), versionados para que las cifras de
+[`operacion.md`](operacion.md) §9 se puedan comprobar.
 
 El corte es **lo que puede cambiar vs. lo que ya está cerrado**: `decisiones.md` es el único
 sitio donde se toca lo que está abierto; `dataset.md` y `datos.md` son especificación.
@@ -50,7 +53,7 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Decisiones que bloquean la descarga BL1-BL7 | `decisiones.md` §1.3 |
 | Alternativas descartadas | `decisiones.md` §1.4 |
 | Riesgos R1-R22 | `decisiones.md` §2 |
-| Baselines B0/B1/B2 y criterio de aceptación | `dataset.md` §9 |
+| Baselines B0/B1 + trivial y criterio de aceptación | `dataset.md` §9 |
 | Protocolo de evaluación (métrica, incertidumbre, binarización, estratos) | `dataset.md` §10 |
 | Entradas del modelo en operación | `operacion.md` §1 |
 | Latencias por fuente | `datos.md` §1 y §6 |
@@ -60,6 +63,7 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Comparativa M-A vs M-B (diagnóstico, no canónica) | `operacion.md` §9 |
 | Flujo de preentrenamiento MCD64A1 | `operacion.md` §10 |
 | Sumas de verificación de los artefactos | `artefactos/canonicos.json` |
+| Resultados publicables en JSON (baselines, auditorías, reproducción local) | `artefactos/resultados/` |
 
 > Esta tabla **no repite los valores**: solo dice dónde vive cada uno. Los valores están en
 > el fichero canónico; si un número cambia, cambia ahí y en ningún otro sitio.

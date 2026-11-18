@@ -62,7 +62,7 @@ fijada y su motivación.
 | **BL2** | **Checkpoint de TMB-S3** | **Cerrada** | **ConvLSTM de 5 bandas** (`Oa04, Oa06, Oa08, Oa17, Oa21`) de `links-ads/tmb-s3-models`. Reduce descarga $\times 4$ preservando rendimiento |
 | **BL3** | **Alcance del preentrenamiento** | **Cerrada** | Recuadro mediterráneo `GEO_MED` (**30–46,5°N / 6°O–31°E**) y periodo **2018–2026** (constelación dual S3A+S3B). Excluidos los 96 eventos CEMS (D15) |
 | **BL4** | **Definición de "evento" en MCD64A1** | **Cerrada** | **Cluster DBSCAN** ($\varepsilon=150$ km, ventana 30 d) sobre píxeles quemados con recorte $64\times 64$ px centrado en el evento (patrón TMB-S3) |
-| **BL5** | **Canales de entrada v1** | **Cerrada** | **S1 (radar) a la v2.** En la v1: OLCI (5 bandas) + ERA5/GFS + DEM/WorldCover + **FIRMS/VIIRS** (focos activos + FRP 48 h) |
+| **BL5** | **Canales de entrada v1** | **Cerrada** | **En la v1: OLCI (5 bandas) + DEM/WorldCover + cicatriz de TMB-S3 + horizonte *h*.** Sentinel-1 (radar), ERA5/GFS y FIRMS/VIIRS quedan **a la v2**: el viento está fuera del alcance del proyecto (P2) |
 | **BL6** | **Series no mediterráneas (8 de 44)** | **Cerrada** | **Fuera de la CV principal.** 36 series puramente mediterráneas para los 5 folds; las 8 de ultramar/atlántico quedan como test complementario fuera de dominio (fold -1) |
 | **BL7** | **Máscara de nubes de OLCI** | **Cerrada** | **Banderas de calidad nativas de CDSE**. Idéntico a lo que vio TMB-S3 al entrenarse |
 
@@ -92,11 +92,11 @@ no se repite.
 | GEE como motor de imagen | STAC + rasterio directo | GEE da imágenes, clima, terreno y cobertura con 5-15 líneas cada uno. Ahorra ~2 días | operacion.md §6 |
 | `copernicus-ems` para CEMS | Cliente HTTP a mano | Ya resuelve activations, products, máscaras de observación, rasterización tri-estado y métricas enmascaradas | datos.md §2.7 |
 | Split por cluster geográfico | Split temporal por año (Mesogeos) o aleatorio | El split por año de Mesogeos mide generalización temporal, no espacial: un test de 2022 puede caer junto a un train de 2019. Con 96 eventos, el aleatorio filtra el mismo incendio entre train y test | B9, D8 |
-| Baselines antes de la red | Ir directo a la arquitectura | Si no supera la advección por viento, no hay modelo | dataset.md §9 |
+| Baselines antes de la red | Ir directo a la arquitectura | Si no supera a B1 (dilatación radial) ni al trivial "todo quemado", no hay modelo | dataset.md §9 |
 | Horizonte anclado en la última observación | Anclar en `event_time` o en la ronda de CEMS | Se acreditaría tiempo en el que el fuego ya estaba quemando; el modelo aprendería horizontes que no tendrá en operación | operacion.md §2 |
 | Meteo de pronóstico (GFS/ECMWF) además del análisis (ERA5) | Solo ERA5-Land | El análisis describe el pasado; para anticipar el frente hace falta el viento futuro | operacion.md §7 |
 | FIRMS/VIIRS como canal de entrada | Omitirlo, por ser grueso y ruidoso | Es la señal más timely sobre dónde está el fuego ahora mismo; aporta el ancla en tiempo real | BL5 |
-| Una muestra por frame OLCI | Una muestra por ronda CEMS / rejilla diaria | Reproduce la cadencia de operación (actualiza cada ~2-3 días) y hace que el arranque en frío aparezca solo. El nº de muestras con esta regla está sin medir (P7); lo que sí es inmediato es que 455 productos DEL ↔ 359 transiciones | dataset.md §2 |
+| Una muestra por frame OLCI | Una muestra por ronda CEMS / rejilla diaria | Reproduce la cadencia de operación (actualiza cada ~2-3 días) y hace que el arranque en frío aparezca solo. Con esta regla el censo da 411 muestras únicas $(f,h)$ sobre 44 series, de las que el ensamblador publica 296 en 40 series (P7, cerrado) | dataset.md §2 |
 | Sensor por ronda, evaluación estratificada | Filtrar las transiciones con sensor distinto | Filtrar encoge un dataset que ya es pequeño; estratificar no pierde nada y el contraste es un resultado propio | D4, R14 |
 | Métrica principal por evento, con agregadas como segundo resultado | Solo promedio por píxel | Con 46 series evaluadas, el promedio por píxel da demasiado peso a los AOIs grandes | dataset.md §10 |
 
@@ -157,8 +157,8 @@ TMB-S3 se entrenó con CEMS y usó **split por cluster geográfico (DBSCAN, 150 
 `delineation_time_pre/post` y `geometry_wkt` (el polígono de la caja, en lon/lat).
 
 **La auditoría se ejecutó** (2026-11-07): 770 cajas, 246 activaciones, splits 517 / 135 /
-118. Cruzada con las 107 activaciones mediterráneas de CEMS (71 con señal de crecimiento,
-**96 series**, el mismo número que el censo de dataset.md §3).
+118. Cruzada con las 107 activaciones mediterráneas de CEMS (**96 series con señal de
+crecimiento**, el mismo número que el censo de dataset.md §3).
 
 | Resultado | Valor |
 |---|---|
@@ -214,7 +214,8 @@ Este paso va **antes de cualquier descarga de OLCI** porque decide qué se desca
 script implementa **D13** (excluye las 50 series del `train`/`val` de TMB-S3) y aporta los
 datos que necesitan **D14** y **D15**: los 46 eventos utilizables para la CV agrupada y los
 96 que deben quedar fuera del pool de MCD64A1. La construcción de los folds y el marcado
-del pool quedan por escribir.
+del pool **están hechos**: el manifiesto sale de `scripts/build_cems_manifest.py` y el
+reparto en 5 folds por cluster, de `scripts/build_pytorch_dataset.py` (D14).
 
 Dentro de la Fase 1 hay **dos comprobaciones que van antes de entrenar**, porque cambian el
 dataset y son baratas: se hacen sobre los metadatos, sin descargar imagen.
@@ -257,21 +258,18 @@ arquitectura de tres fuentes.
   **12 que están en el `test` de TMB-S3** (muestra pequeña pero **generalización real**:
   sus pesos no las entrenaron). Si el F1 es alto (>80%), el margen es pequeño; si es bajo,
   el modelo puede estar heredando ese error y hay que considerar el fine-tune (operacion.md §4).
-- **¿B2 (advección por viento) aguanta el mismo?** El baseline hay que evaluarlo **con el
-  mismo protocolo estratificado** que el modelo (dataset.md §10). Si B2 mejora en el subconjunto
-  "limpio" más que el modelo, el ruido de las etiquetas estaba inflateando al modelo.
 - **¿La divergencia Sentinel-3 ↔ CEMS (§6) es del mismo tamaño que la divergencia entre
   sensores?** Si sí, buena parte de R14 es en realidad el mismo problema de §6 y se
   atacan juntos.
 - **¿El ajuste con CEMS (M-B) mejora sobre el solo preentrenamiento (M-A)?** Es la
   comparación central del proyecto (dataset.md §8). Si el ajuste no aporta, se entrega M-A y el
-  proyecto queda más simple. Si M-A ya bate B2, es un resultado en sí mismo.
-  → **Respuesta provisional (2026-11-16): todavía no.** Medido sobre el mismo test (25
-  muestras, 7 series, umbral 0,10), M-B da 12,26% de F1 contra la etiqueta de referencia y
-  **14,80%** el entrenamiento desde cero; M-A en cero-disparo se queda en 10,61%. Con ese
-  tamaño de muestra **ninguna de las diferencias es significante**, pero hoy **no hay ni un
-  indicio a favor del preentrenamiento**, y el umbral del M-B es aún menos estable
-  (dispersión 0,50). Detalle y reservas en [`operacion.md`](operacion.md) §9.
+  proyecto queda más simple.
+  → **Respuesta (2026-11-18): todavía no.** Medido sobre el test canónico (25 muestras,
+  7 series, umbral común 0,10) contra la etiqueta de referencia, M-A da **10,61%**, M-B
+  **11,80%** y el modelo de producción desde cero **14,68%**; la variante **M-B + Tversky**
+  sube la precisión (39,53%) pero baja el F1 de referencia a 10,08%. Con ese tamaño de
+  muestra **ninguna de las diferencias es significante**, pero hoy **no hay ni un indicio a
+  favor del preentrenamiento**. Detalle y reservas en [`operacion.md`](operacion.md) §9.
 - **¿El horizonte se comporta de forma monótona?** Si predecir a 7 días da menos quemado
   que predecir a 3, hay un problema de calibración del modelo con *h*, no de propagación.
 - **¿FireCCI S3.1.1 está de acuerdo con CEMS?** Como tercera opinión: si la divergencia
@@ -305,7 +303,7 @@ alta resolución y observación de 300 m es del X%".
            Cruzar manifest.parquet de TMB-S3 con nuestros eventos
            -> 46 series limpias + CV agrupada de 5 folds
   FASE 0   Mesogeos 1 km + WildFireSpread      -> cadena y referencia de pipeline
-           (tarea extent; los baselines de propagación son B0/B1/B2, dataset.md §9)
+           (tarea extent; los baselines de propagación son B0 y B1, dataset.md §9)
   FASE 1a  Preentrenamiento con MCD64A1 (supervisor, Mediterráneo)
            -> modelo M-A (que nunca ha visto CEMS)
   FASE 1b  Ajuste con CEMS (46 series, 5 folds)  -> modelo M-B
