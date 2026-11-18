@@ -20,15 +20,18 @@ NextDayWildfireSpread) mete meteorología, topografía y combustible como entrad
 modelo puramente imagen→imagen aprende el prior "el fuego sigue donde iba", que funciona
 mientras el viento no cambie y falla justo en los casos que importan.
 
-Por eso el modelo usa **imágenes abiertas + variables meteorológicas y de terreno abiertas**
-(ERA5/GFAS, Copernicus DEM, WorldCover). Nada de esto tiene coste ni licencia comercial.
+Por eso el proyecto usa **imágenes abiertas + variables meteorológicas y de terreno
+abiertas** (ERA5/GFAS, Copernicus DEM, WorldCover). Nada de esto tiene coste ni licencia
+comercial. **Hoy el modelo entrenado solo consume imagen y terreno**; la meteorología es el
+siguiente paso, y la razón de que esté planeada es precisamente la que da este apartado.
 
 **El enfoque elegido:**
 
 | | |
 |---|---|
 | Etiquetas | CEMS EMSR: delineaciones de quemado fechadas por ronda de monitorización |
-| Entrada | Sentinel-3 OLCI (revisita ~2 días) + Sentinel-1 (radar, ~6 días, **v2**) + Sentinel-2 (línea base pre-incendio) + ERA5 + GFS + DEM + WorldCover |
+| Entrada **actual** | Sentinel-3 OLCI (5 bandas, revisita ~2 días) + cicatriz de TMB-S3 + Copernicus DEM + ESA WorldCover + horizonte *h* |
+| Entrada **prevista (v2)** | + Sentinel-1 (radar, ~6 días) + Sentinel-2 (línea base pre-incendio) + ERA5/GFS (meteo observada y prevista) + FIRMS/VIIRS (focos activos) |
 | Salida | Probabilidad de quema por píxel a horizonte variable |
 | Resolución | 300 m |
 | Región | Mediterráneo / UE |
@@ -37,9 +40,10 @@ Por eso el modelo usa **imágenes abiertas + variables meteorológicas y de terr
 
 **El problema conocido del dataset**: 96 series con señal de crecimiento es un número bajo
 para generalizar (WSTS tiene 607, TS-SatFire 179, TMB-S3 246). Y la auditoría de splits
-(decisiones.md §3) reduce el conjunto útil a **46 series**, porque TMB-S3 se sabe de memoria 50 de
-ellas (operacion.md §4). Es el principal frente abierto y la razón de las dos palancas de ampliación
-(decisiones.md §4).
+(decisiones.md §3) reduce el conjunto útil a **46 series limpias**, porque TMB-S3 se sabe de
+memoria 50 de ellas (operacion.md §4). De esas 46, el manifiesto conserva 44 y el dataset
+publicado **40 series** con 295 muestras. Es el principal frente abierto y la razón de
+las dos palancas de ampliación (decisiones.md §4).
 
 **Las tres decisiones que definen el proyecto**, y que se互补an:
 
@@ -48,8 +52,9 @@ ellas (operacion.md §4). Es el principal frente abierto y la razón de las dos 
    modelo (operacion.md §3-4).
 2. **Se audita qué sabe TMB-S3.** Resultado: 62 de las 96 series están dentro de su
    dataset. Se excluyen las 50 que están en su `train`/`val`, y quedan 46 (decisiones.md §3).
-3. **Con 46 series, el reparto fijo desperdicia el 80%.** Por eso se usa **validación
-   cruzada agrupada**: las 46 series se evalúan todas, cada una una vez (dataset.md §5).
+3. **Con tan pocas series, el reparto fijo desperdicia el 80%.** Por eso se usa
+   **validación cruzada agrupada**: cada serie se evalúa exactamente una vez
+   (dataset.md §5).
 
 ---
 

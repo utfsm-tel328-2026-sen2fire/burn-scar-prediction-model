@@ -1,10 +1,10 @@
 # Índice de la documentación
 
-> **Estado: el diseño está cerrado; la implementación, no.** Cada documento tiene
-> una audiencia y un trabajo, y **cada dato vive en un solo fichero**.
->
 > **En una frase:** qué se ha decidido, qué hay que construir, qué necesita el modelo en
 > producción y de dónde sale cada dato.
+>
+> Cada documento tiene una audiencia y un trabajo, y **cada dato vive en un solo
+> fichero**: el resto lo enlaza, no lo repite.
 >
 > Empieza por el [README de la raíz](../README.md). ¿No sabes qué es una AOI, una
 > delineación o el NBR? → [Glosario](dataset.md#1-glosario).
@@ -13,10 +13,10 @@
 
 | Documento | Qué contiene | Naturaleza |
 |---|---|---|
-| `README.md` (raíz) | Qué es el proyecto, estado, decisiones clave, próximos pasos | punto de entrada |
+| `README.md` (raíz) | Qué es el proyecto, estado, puesta en marcha, decisiones clave, próximos pasos | punto de entrada |
+| [`dataset.md`](dataset.md) | Glosario, qué es una muestra, el target, el pipeline de construcción, las reglas D1-D22, baselines y protocolo de evaluación | **cerrado** |
+| [`operacion.md`](operacion.md) | Qué necesita el modelo en inferencia, cómo se regenera el dataset, los resultados canónicos y el preentrenamiento MCD64A1 | **cerrado** |
 | [`decisiones.md`](decisiones.md) | Decisiones cerradas (B), pendientes (P, BL), alternativas descartadas, riesgos (R), preguntas abiertas | **cambia** |
-| [`dataset.md`](dataset.md) | Glosario, qué es una muestra, el target, el censo, las reglas (D1-D20), baselines y protocolo de evaluación | **cerrado** |
-| [`operacion.md`](operacion.md) | Qué necesita el modelo en inferencia: entradas, latencias, ciclo, TMB-S3 como generador de cicatriz | **cerrado** |
 | [`investigacion.md`](investigacion.md) | Estado del arte, por qué 300 m, cómo verificar los números | referencia |
 | [`datos.md`](datos.md) | Catálogo de fuentes: dónde está cada dato, IDs, endpoints, licencias | referencia |
 | [`experiment-tracking.md`](experiment-tracking.md) | TensorBoard compartido, checkpoints, NFS | guía |
@@ -38,14 +38,15 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 |---|---|
 | Censo CEMS (activaciones, series, rondas, transiciones) | `dataset.md` §3 |
 | Series limpias tras la auditoría y su reparto TMB-S3 | `decisiones.md` §3 (y D13) |
-| Nº de muestras con la regla "una por frame OLCI" | `dataset.md` §2 (pendiente P7) |
+| Nº de adquisiciones candidatas y muestras por frame OLCI | `dataset.md` §2 (cerrado: P7) |
 | Definición del target | `dataset.md` §2 |
 | Máscara de evaluación | `dataset.md` §10 (y D3) |
 | Rejilla de horizontes de preentrenamiento | `dataset.md` §2 (y D10) |
 | Tamaño de ventana, stride y densidades por buffer | `dataset.md` §6 (y D17) |
-| Reglas de construcción D1-D20 | `dataset.md` §7 |
+| Pipeline de construcción (scripts y orden) | `dataset.md` §11 |
+| Reglas de construcción D1-D22 | `dataset.md` §7 |
 | Decisiones cerradas B1-B13 | `decisiones.md` §1.1 |
-| Pendientes de evaluación P1-P7 | `decisiones.md` §1.2 |
+| Pendientes de evaluación P1-P8 | `decisiones.md` §1.2 |
 | Decisiones que bloquean la descarga BL1-BL7 | `decisiones.md` §1.3 |
 | Alternativas descartadas | `decisiones.md` §1.4 |
 | Riesgos R1-R22 | `decisiones.md` §2 |
@@ -56,19 +57,33 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Estado del arte, benchmarks, por qué 300 m | `investigacion.md` §2 y §3 |
 | Composición canónica del dataset y exclusiones | `operacion.md` §9 |
 | Resultados canónicos y soporte por banda de horizonte | `operacion.md` §9 |
+| Comparativa M-A vs M-B (diagnóstico, no canónica) | `operacion.md` §9 |
+| Flujo de preentrenamiento MCD64A1 | `operacion.md` §10 |
 | Sumas de verificación de los artefactos | `artefactos/canonicos.json` |
 
 > Esta tabla **no repite los valores**: solo dice dónde vive cada uno. Los valores están en
 > el fichero canónico; si un número cambia, cambia ahí y en ningún otro sitio.
 
+## Contrato con el código y con las specs
+
+- `tests/test_documentation_consistency.py` **contrasta la documentación contra el índice
+  canónico y contra el código**: si el dataset cambia, el test falla. Las cifras no son
+  constantes escritas a mano.
+- `openspec/specs/` es la especificación de comportamiento, y `openspec/changes/archive/`
+  el historial de cómo se llegó a ella. Capacidades: `propagation-dataset`,
+  `propagation-evaluation`, `mcd64a1-pretraining`, `prediction-visualization`,
+  `execution-environment`, `nix-development-environment`, `shared-experiment-tracking`.
+
 ## Reglas de mantenimiento
 
 1. **No duplicar.** Antes de escribir un dato en un documento, comprobar en la tabla de
    arriba dónde vive y enlazar en su lugar.
-2. **Conservar los identificadores.** `D1-D20`, `R1-R22`, `B1-B13`, `P1-P7`, `BL1-BL7`,
+2. **Conservar los identificadores.** `D1-D22`, `R1-R22`, `B1-B13`, `P1-P8`, `BL1-BL7`,
    `M-A/M-B` se citan en el código, en las specs de OpenSpec y en el informe: no se
    renumeran.
 3. **Las referencias son cualificadas.** Cuando una referencia cruza de documento, se
    escribe con el fichero (`dataset.md §7`); dentro del mismo documento, basta `§7`.
 4. **Actualizar las referencias con el contenido.** Si una sección cambia de sitio, hay que
    buscar quién la citaba (`grep -rn "§X"`).
+5. **Sin marcadores de conflicto.** Un `<<<<<<<` sin resolver en un documento es un
+   documento roto: revisa `git diff` antes de commitear.

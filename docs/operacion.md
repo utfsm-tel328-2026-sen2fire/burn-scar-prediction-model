@@ -9,18 +9,22 @@
 
 ## 1. Las entradas en operación y su edad
 
-| Entrada | Fuente | Latencia (adquisición → disponible) | Revisita sobre el AOI | **Edad del dato más reciente** |
-|---|---|---|---|---|
-| Imagen multiespectral | Sentinel-3 OLCI **NRT** L1 | **< 3 h** | ~2 d (~3 d con nubes) | **0-2 días (media ~1 día)** |
-| Radar | Sentinel-1 GRD NRT (**v2**) | ~1 h | ~6 d | **0-6 días (media ~3 días)** |
-| Línea base pre-fuego | Sentinel-2 SR (compuesto) | ~3 h | 5 d | días o semanas antes del fuego |
-| Meteo observada | GFAS | ~12 h | 6-12 h | **~12 h** |
-| Meteo observada | ERA5-Land-**T** | 5 d | horario | ~5 d |
-| **Pronóstico** | GFS / ECMWF HRES | ~6-12 h | horario | **a futuro** |
-| Fuego activo | FIRMS / VIIRS | ~1-3 h | 12 h | **~12 h** |
-| Topografía | Copernicus DEM | estático | — | — |
-| Combustible | ESA WorldCover | estático | anual | — |
-| **Cicatriz conocida** | ⚠️ **CEMS no sirve en operación** | — | — | ver §3 |
+**El modelo actual consume solo las entradas marcadas con ✅.** Las demás están previstas
+para la v2 (BL5) y hoy no llegan al encoder: son catálogo de fuentes disponibles, no
+entradas reales.
+
+| Entrada | Fuente | En el modelo | Latencia (adquisición → disponible) | Revisita sobre el AOI | **Edad del dato más reciente** |
+|---|---|:--:|---|---|---|
+| Imagen multiespectral | Sentinel-3 OLCI **NRT** L1 | ✅ | **< 3 h** | ~2 d (~3 d con nubes) | **0-2 días (media ~1 día)** |
+| Radar | Sentinel-1 GRD NRT | v2 | ~1 h | ~6 d | 0-6 días (media ~3 días) |
+| Línea base pre-fuego | Sentinel-2 SR (compuesto) | v2 | ~3 h | 5 d | días o semanas antes del fuego |
+| Meteo observada | GFAS | v2 | ~12 h | 6-12 h | ~12 h |
+| Meteo observada | ERA5-Land-**T** | v2 | 5 d | horario | ~5 d |
+| **Pronóstico** | GFS / ECMWF HRES | v2 | ~6-12 h | horario | a futuro |
+| Fuego activo | FIRMS / VIIRS | v2 | ~1-3 h | 12 h | ~12 h |
+| Topografía | Copernicus DEM | ✅ | estático | — | — |
+| Combustible | ESA WorldCover | ✅ | estático | anual | — |
+| **Cicatriz conocida** | **TMB-S3 congelado** (no CEMS) | ✅ | ver §3-4 | — | ver §3 |
 
 **El cuello de botella es Sentinel-3.** Su latencia de publicación es de menos de 3 horas,
 así que el problema no es el retraso de la información sino la **revisita**: el producto
@@ -84,29 +88,23 @@ un **train/test shift** silencioso. Cuatro salidas:
 ## 4. El modelo: un generador de cicatriz externo + una cabeza de propagación
 
 ```
-   Sentinel-3  (OLCI, 300 m, ~2 dias)
-   Sentinel-1  (GRD, radar, ~6 dias) - v2, fuera de la v1 (BL5)
-   Sentinel-2  (linea base pre-incendio, 20 m)
-   ERA5 / GFS  (viento, temperatura, humedad)
-   DEM / WorldCover  (topografia, combustible)
-   horizonte h (dias)
-         |
-         |            +-------------------------------+
-         |            |   TMB-S3  (CONGELADO)        |
-         +----------->|   "donde esta quemado ahora" |
-                      +-------------------------------+
-                                    |
-                                    v
-         +--------------------------------------------------------------+
-         |                        ENCODER                               |
-         |                  ConvLSTM + SegFormer                        |
-         +--------------------------------------------------------------+
-                                    |
-                                    v
-                      +-------------------------------+
-                      |  CABEZA: PROPAGACION         |
-                      |  "donde ardara en h"          |
-                      +-------------------------------+
+   Sentinel-3  (OLCI, 300 m, ~2 dias) -------------------+
+   DEM / WorldCover  (topografia, combustible) ---------+--> ENCODER
+   horizonte h (dias) ---------------------------------+     ConvLSTM + SegFormer
+                                                         |
+   Sentinel-3  (OLCI, 300 m) -----------------------------+--> TMB-S3 (CONGELADO)
+                                                            "donde esta quemado ahora"
+                                                                  |
+                                                                  v
+   Sentinel-1  (GRD, radar, ~6 dias)   - v2, fuera del modelo actual (BL5)
+   Sentinel-2  (linea base pre-incendio, 20 m) - v2
+   ERA5 / GFS  (viento, temperatura, humedad) - v2
+                                                                   |
+                                                                   v
+                                                 +-------------------------------+
+                                                 |  CABEZA: PROPAGACION         |
+                                                 |  "donde ardara en h"          |
+                                                 +-------------------------------+
 ```
 
 Por qué TMB-S3 y no una cabeza de delineación propia:
@@ -354,6 +352,7 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
 - La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
 
+<<<<<<< HEAD
 ### Preentrenamiento con MCD64A1 (Etapa M-A → Ajuste M-B)
 
 Para incorporar datos de preentrenamiento de `MODIS/061/MCD64A1` (sin solapamiento con los
@@ -382,6 +381,8 @@ uv run --extra rocm python scripts/train_propagation.py \
       --tag prop_m_b_finetuned
 ```
 
+=======
+>>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
 ## 9. Qué etiqueta se está midiendo (diagnóstico del target)
 
 El dataset guarda **dos etiquetas** por muestra:
@@ -629,3 +630,84 @@ información disponible que el modelo.
 Donde el número de upstream sí es útil es como referencia de la **calidad del generador de
 cicatriz**, que es el techo de la entrada `x_scar` y, por tanto, el techo de la etiqueta de
 ensamblaje.
+<<<<<<< HEAD
+=======
+### Comparativa M-A vs M-B (diagnóstico, no canónica)
+
+Los runs de comparativa **no están en `artefactos/canonicos.json`**: son diagnóstico, no
+resultado publicable. Se miden sobre el mismo conjunto de test (fold -1, 25 muestras, 7
+series), el mismo umbral operativo (0,10) y las mismas etiquetas que el run canónico.
+
+| Modelo | F1 ensamblaje | F1 referencia | Umbrales óptimos por fold |
+|---|---:|---:|---|
+| **A — desde cero** (`comparativa_scratch`) | **36,51%** | **14,80%** | 0,10 · 0,10 · 0,50 · 0,10 · 0,40 (dispersión 0,40) |
+| **B — M-B preentrenado** (`comparativa_mb_pretrained`) | 34,24% | 12,26% | 0,10 · 0,10 · 0,10 · 0,10 · 0,60 (dispersión 0,50) |
+| **M-A en cero-disparo** (sin ajuste fino) | 19,71% | 10,61% | — (barrido 0,1–0,7; óptimo 0,20 en ensamblaje, 0,10 en referencia) |
+
+Cómo leerlo:
+
+- **"Desde cero" y el run canónico `prop_v4_integrity` dan cifras idénticas.** Misma
+  semilla, misma configuración y mismo dataset: la reproducibilidad del pipeline queda
+  confirmada.
+- **El preentrenamiento no aporta.** M-B queda por debajo de "desde cero" en las dos
+  etiquetas (34,24% vs 36,51% y 12,26% vs 14,80%). Con 7 series y 25 muestras la
+  diferencia **no es significante**, pero no hay ni un indicio a favor del preentrenamiento
+  en este estado. El objetivo de M-A/M-B (§8 de `dataset.md`) sigue abierto.
+- **M-A sin ajuste ya supera a los baselines**, en las dos etiquetas: contra la de
+  ensamblaje, 19,71% frente al 16,29% del trivial y el 15,94% de B1; contra la de
+  referencia, 10,61% frente al 8,42% y el 7,30%. Es decir: **un modelo entrenado solo con
+  etiquetas MODIS ya sitúa el frente por encima de la geometría y del trivial** — pero por
+  debajo del modelo de producción (14,80%).
+- **La cota de M-A es holgada**: el checkpoint evaluado es el de la **epoch 1**, no el de las
+  10 épocas del flujo de §10. Es un mínimo, no el resultado del preentrenamiento completo.
+- **El umbral del M-B es aún menos estable** que el del run canónico: dispersión 0,50 frente
+  a 0,40, con cuatro folds en 0,10 y uno en 0,60.
+
+> Para repetir la comparativa: los dos runs se entrenan con el mismo
+> `data/processed/dataset_index.json` y la misma semilla 42; el segundo añade
+> `--init-checkpoint` (§10). Las métricas por fold están en `runs/comparativa_test.json` y el
+> barrido por umbral de M-A en `runs/m_a_zero_shot.json`.
+
+## 10. Preentrenamiento con MCD64A1 (M-A → M-B)
+
+`MODIS/061/MCD64A1` es el **supervisor** del preentrenamiento: da el día de quema por píxel
+a 500 m, con ~6 semanas de retraso, y por eso no puede filtrar información que en operación
+no tendrías (dataset.md §8). El flujo completo es:
+
+```bash
+# 1. Diagnóstico R19: desfase mediano (BurnDate - observed_time) sobre CEMS
+uv run python scripts/audit_mcd64a1_lag.py --limit 12
+
+# 2. Minería de eventos MCD64A1 mediterráneos (2018-2026, DBSCAN 150 km/30 d, excluyendo CEMS)
+uv run python scripts/build_mcd64a1_manifest.py --max-events 500
+
+# 3. Descarga incremental y reanudable de parches 64x64 (MCD64A1 + OLCI con nubes reales + DEM/WC)
+uv run python scripts/download_gee_mcd64a1.py --manifest data/mcd_manifest.json
+
+# 4. Ensamblar el dataset PyTorch de preentrenamiento (TMB-S3 congelado + máscara QA)
+uv run --extra rocm python scripts/build_mcd64a1_dataset.py
+
+# 5. Etapa 1 (M-A): preentrenar con MCD64A1 y evaluar transferencia cero-disparo sobre CEMS
+uv run --extra rocm python scripts/pretrain_mcd64a1.py \
+      --epochs 10 --output-checkpoint checkpoints/mcd_pretrained.pt
+
+# 6. Etapa 2 (M-B): ajustar los 5 folds de CEMS inicializando desde el checkpoint M-A
+uv run --extra rocm python scripts/train_propagation.py \
+      --epochs 15 --init-checkpoint checkpoints/mcd_pretrained.pt \
+      --tag prop_m_b_finetuned
+```
+
+| Paso | Qué garantiza | Dónde está escrito |
+|---|---|---|
+| 1 | El desfase de detección de MODIS es aceptable (< 1-2 días) o se corrige con un *shift* | `decisiones.md` §2 R19 |
+| 2 | Ningún evento de MCD64A1 se solapa en espacio o tiempo con los 96 eventos de CEMS | `dataset.md` §7 D15 |
+| 3 | Las nubes y el humo **reales** se conservan en OLCI; solo se filtra el nodata de swath y el nocturno | spec `mcd64a1-pretraining` |
+| 4 | Las muestras del preentrenamiento tienen el **mismo esquema de entradas** que las de CEMS (OLCI, DEM, WorldCover, cicatriz y horizonte), con TMB-S3 congelado. No llevan etiqueta de referencia: su target sale de `BurnDate` | `dataset.md` §7 D12, D17 |
+| 5 | M-A se puede evaluar en cero-disparo sobre CEMS sin haberlo visto nunca | `dataset.md` §8 |
+| 6 | M-B inicializa cada fold desde el checkpoint M-A sin romper el entrenamiento desde cero | `dataset.md` §8 |
+
+> **Dónde está el resultado.** La comparación de este pipeline está en §9
+> ("Comparativa M-A vs M-B"): con los runs actuales, **el preentrenamiento no mejora al
+> entrenamiento desde cero**. El flujo está implementado y es reproducible; la conclusión
+> sobre su utilidad todavía no.
+>>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)

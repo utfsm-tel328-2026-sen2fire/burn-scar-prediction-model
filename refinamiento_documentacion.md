@@ -1,1 +1,0 @@
-docs/refinamiento_documentacion.md

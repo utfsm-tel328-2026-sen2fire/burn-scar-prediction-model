@@ -23,7 +23,7 @@
 | **GFS / ECMWF HRES** | **Pronóstico** (viento futuro) | NOAA / ECMWF | 25-31 km | horario | ~6-12 h | global | Gratis |
 | **GFAS** | Meteo near-real-time | NASA LAADS | 0,1° | 6-12 h | ~12 h | global | Gratis |
 | **FIRMS / VIIRS** | Fuego activo + FRP | NASA FIRMS | 375 m | 12 h | ~1-3 h | global | Gratis |
-| **Copernicus DEM** | Topografía | `COPERNICUS/DEM/GLO30` | 30 m | estático | — | global | Gratis |
+| **Copernicus DEM** | Topografía | `COPERNICUS/DEM/GLO30_2024_1` | 30 m | estático | — | global | Gratis |
 | **ESA WorldCover** | Combustible / cobertura | `ESA/WorldCover/v200` | 10 m | anual | — | global | Gratis |
 | **MCD64A1** | **Supervisor** del preentrenamiento | `MODIS/061/MCD64A1` | 500 m | mensual | ~6 semanas | global | Gratis (login) |
 | **FireCCI51** | Supervisor de preentrenamiento a 250 m | `ESA/CCI/FireCCI/5_1` | 250 m | mensual | ~6 semanas | global | Gratis |
@@ -183,8 +183,9 @@ antemano con qué sensor se trazó cada etiqueta.
 > ⚠️ **El sensor de cada ronda es metadato crítico, no un detalle.** En la curva de arriba, el
 > paso de Sentinel-2 (10 m) a Legion (50 cm) ocurre entre las dos primeras rondas: parte del
 > "crecimiento" medido ahí es **diferencia de detección**, no propagación. Guardar siempre
-> el sensor de cada ronda y usarlo para **estratificar la evaluación** (riesgo R14 de
-> `decisiones.md` §2). La regla que hay que cumplir al construir las muestras es: el target
+> el sensor de cada ronda —es lo que hace el ensamblador— para poder **estratificar la
+> evaluación** (riesgo R14 de `decisiones.md` §2; la estratificación está pendiente,
+> dataset.md §10). La regla que hay que cumplir al construir las muestras es: el target
 > se ancla en la ronda siguiente (`r+1`) y la cicatriz de entrada la produce TMB-S3, no una
 > ronda de CEMS (dataset.md §7 D1, D9).
 
@@ -250,13 +251,13 @@ tipada (mypy strict), `httpx` como única dependencia, extras opcionales `[geo]`
 |---|---|
 | Resolución | 300 m (21 bandas) |
 | Revisita | ~2 días |
-| Cobertura | 2016-10-18 → presente |
+| Cobertura | En GEE desde **2016-10-18**; el sensor ya tenía datos OLCI desde abril de 2016 (`investigacion.md` §3.2bis) |
 | Producto | **OLCI EFR, radiancia *top-of-atmosphere*** (no reflectancia de superficie) |
 | Bandas | Oa01 (400 nm) … Oa21 (1020 nm) |
 
-> ⚠️ **TODO unificar.** La cobertura de la colección en GEE (2016-10-18) no coincide con la
-> fecha del primer OLCI de S3A que se cita en `investigacion.md` §3.2bis (abril 2016).
-> Es lo que fija el límite inferior de la ventana temporal (BL1, BL3).
+> **El límite inferior operativo es el de la colección de GEE (2016-10-18)**: antes de esa
+> fecha no hay imagen en Earth Engine, aunque el sensor existiera. Es lo que fija el
+> límite inferior de la ventana temporal (BL1, BL3).
 
 **Dos trampas importantes:**
 
@@ -365,15 +366,17 @@ específica, precipitación.
 **Alternativa:** NASA **GFAS** (Global Fire Assimilation System) en LAADS. Fuente de la doble
 verificación meteorológica y la opción near-real-time sin clave de CDS.
 
-> ⚠️ **TODO unificar.** Aquí se describía como "sin cuenta" y "diario", pero §1 da cadencia
-> 6-12 h y §6.1 la registra como **obligatoria**. Decidir antes de fijar la ingesta
-> (BL1-BL3).
+> **GFAS necesita registro** en NASA LAADS (gratuito), como la tabla de §6.1: no es una
+> fuente "sin cuenta". Su cadencia es de **6-12 h**, no diaria.
 
 ### 4.2 Copernicus DEM — topografía
 
 ```
-  ee.ImageCollection("COPERNICUS/DEM/GLO30")   # 30 m
+  ee.ImageCollection("COPERNICUS/DEM/GLO30_2024_1")   # 30 m
 ```
+
+> El downloader usa la versión **`GLO30_2024_1`** (`scripts/download_gee_olci.py`), que es la
+> que se ha descargado; `GLO30` sin versión sigue siendo válida en GEE y da el mismo DEM.
 
 Derivar pendiente y orientación con `ee.Terrain.slope()` y `ee.Terrain.aspect()`.
 
@@ -409,18 +412,18 @@ Aunque se publica como producto mensual, el payload es **día de quema por píxe
 | `BurnDate` | Día del año en que quemó (1-366); 0 = no quemado, −1 = sin dato, −2 = agua |
 | `Uncertainty` | Incertidumbre en días |
 | `FirstDay` / `LastDay` | Ventana de detección fiable del mes |
-| `QA` | Bit 2 = periodo de mapeo acortado (nube); bits 5-7 = "observaciones demasiado espaciadas" (descartar) |
+| `QA` | Bit 0 = 1 en tierra, 0 en agua (el ensamblador marca el agua como inválida); bit 2 = periodo de mapeo acortado (nube); bits 5-7 = "observaciones demasiado espaciadas" (descartar) |
 
 **Por qué importa:**
 
-1. **Es 100% reproducible con datos abiertos.** Contrasta directamente al 82% de las
+1. **Es 100% reproducible con datos abiertos.** Contrasta directamente al 80 % de las
    etiquetas de CEMS que vienen de imagen comercial (riesgo R2).
 2. **Permite deriva una curva de crecimiento diaria a 500 m, global, desde 2000.** Es el
    dataset de preentrenamiento natural: millones de transiciones para aprender la física
-   de la propagación, y luego afinar con las 46 series limpias de CEMS.
+   de la propagación, y luego afinar con las series limpias de CEMS.
 
-> ⚠️ **TODO unificar.** El "82 %" del punto 1 es el único sitio que no dice 80 % (390 de 489
-> delineaciones, R2 e `investigacion.md` §2.4). Comprobar y dejar un único valor.
+> **El 80 %** es 390 de 489 delineaciones (R2 e `investigacion.md` §2.4). Es el único valor
+> que se usa en toda la documentación.
 
 **Su papel en este proyecto: supervisor del preentrenamiento, nunca entrada.** Es
 precisamente por tener ~6 semanas de retraso por lo que es un buen supervisor: **no puede
@@ -464,6 +467,18 @@ ventana deslizante 64×64 stride 32, BCE ponderada) y un **protocolo de split ya
 con un matiz: separa por cluster geográfico (DBSCAN, ε=150 km) y estratifica por cluster y
 tamaño de evento, pero **sus propios autores listan como limitación la fuga espacial
 residual** ("nearby events from the same geographic cluster can fall in different splits").
+
+**Cómo se consigue el checkpoint**. El repo de modelos de Hugging Face es **privado**:
+hay que autenticarse (`hf auth login`) y aceptar la licencia antes de descargarlo. El
+proyecto lo espera en una ruta fija, `models/tmb_s3/convlstm_segformer_prepost_subset/model.safetensors`
+(~4,8 MB, el ConvLSTM de 5 bandas), y el cargador falla con un mensaje explícito si no lo
+encuentra:
+
+```bash
+uv run python -c "from huggingface_hub import snapshot_download; \
+  snapshot_download('links-ads/tmb-s3-models', local_dir='models/tmb_s3', \
+                    allow_patterns=['convlstm_segformer_prepost_subset/*'])"
+```
 
 **Lo que hay que corregir al reutilizarlo:**
 
@@ -667,7 +682,7 @@ preentrenamiento, CEMS como etiqueta del ajuste y como métrica).
 
 ### 7.2 Sentinel / Copernicus
 
-> Contains modified Copernicus data (year). Sentinel-2 OLCI: © ESA.
+> Contains modified Copernicus data (year). Sentinel-3 OLCI: © ESA.
 > Processed by the user; the products are distributed under the
 > **Copernicus Data Terms and Conditions**.
 

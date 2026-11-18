@@ -1,52 +1,33 @@
 # burn-scar-prediction-model
 
-Predicción multi-horizonte (continua) del crecimiento de cicatrices de incendio
-forestal en el Mediterráneo, construida íntegramente con datos satelitales y climáticos
+Predicción multi-horizonte del **crecimiento** de cicatrices de incendio forestal en el
+Mediterráneo, a 300 m por píxel, construida íntegramente con datos satelitales y climáticos
 abiertos.
 
-## Qué es este proyecto
+## Qué hace
 
-El objetivo es un modelo que, observando la situación actual de un incendio (imágenes de
-satélite, terreno y cobertura del suelo), prediga **qué zonas se quemarán en los próximos
-días** y con qué probabilidad.
+El modelo mira la situación actual de un incendio y devuelve **un mapa de probabilidad de
+nueva quema** para un horizonte que se pide explícitamente (por ejemplo, "dónde ardará en
+3 días").
 
-- **Datos que usa el modelo actual**: imágenes de Sentinel-3 OLCI (cada ~2 días), Copernicus
-  DEM, cobertura del suelo ESA WorldCover, la cicatriz actual estimada por TMB-S3 y el
-  horizonte continuo de predicción. Sentinel-1, Sentinel-2 y meteorología no forman parte
-  del modelo entrenado.
-- **Lo que devuelve**: un mapa de probabilidad de **nueva quema**, píxel a píxel, para un
-  horizonte continuo que se pide explícitamente.
-- **Con qué se mide**: con las delineaciones del Copernicus Emergency Management Service
-  (CEMS), el único dato público que dibuja el crecimiento de un incendio mediante
-  analistas mirando imágenes **distintas** de las del modelo.
-- **Alcance y resolución**: región mediterránea, 300 m por píxel. El producto se actualiza
-  cada ~2-3 días, que es lo que tarda Sentinel-3 en pasar por el mismo sitio.
-- **Modelo**: un encoder ConvLSTM + SegFormer con una cabeza de propagación. La cicatriz
-  ("¿dónde está quemado ahora?") la genera **TMB-S3 congelado**, un modelo ya publicado
-  que usa el mismo sensor y la misma resolución: así la cicatriz se produce igual al
-  entrenar y al predecir, y la cadena de datos funciona sin CEMS.
+> **No predice la cicatriz, predice el frente.** La cicatriz —"¿dónde está quemado
+> ahora?"— no crece cuando el fuego se apaga; lo que crece es el fuego. Por eso la tarea
+> es **propagación**, no delineación. Ver [`docs/investigacion.md`](docs/investigacion.md) §2.
 
-> La cicatriz de quemadura en sí no "crece" cuando el fuego se apaga: lo que crece es el
-> fuego. Por eso la tarea es **predicción de propagación**, no delineación. Ver
-> [`docs/investigacion.md`](docs/investigacion.md) §2.
+| | |
+|---|---|
+| **Entradas** | Sentinel-3 OLCI (5 bandas, ~2 días) · cicatriz actual generada por **TMB-S3 congelado** · Copernicus DEM · ESA WorldCover · el horizonte *h* en días |
+| **Salida** | Probabilidad de quema por píxel, píxel a píxel, para el horizonte pedido |
+| **Se mide contra** | Las delineaciones del Copernicus Emergency Management Service (CEMS): el único dato público que dibuja el crecimiento de un incendio mirando imágenes **distintas** de las del modelo |
+| **Alcance** | Región mediterránea, 300 m, producto cada ~2-3 días (lo que tarda Sentinel-3 en volver a pasar) |
+| **Arquitectura** | Encoder ConvLSTM + SegFormer con una cabeza de propagación |
 
-## Las seis decisiones que definen el proyecto
-
-| | Decisión | Por qué |
-|---|---|---|
-| 1 | **La cicatriz la pone TMB-S3, congelado** | CEMS no existe en operación; con un modelo, la cicatriz se genera igual al entrenar y al predecir |
-| 2 | **Se audita qué sabe TMB-S3** | Se sabe de memoria 50 de nuestras 96 series: esas series quedan fuera del dataset |
-| 3 | **El objetivo se mide desde la última imagen** | Medir desde la ronda anterior contaría quemado que ya se ve en la imagen |
-| 4 | **Validación cruzada en 5 bloques** | Con 46 series, un reparto fijo evaluaría 9 y desperdiciaría 37 |
-| 5 | **La resolución es 300 m** | Es la banda útil: a más resolución no hay imágenes tan frecuentes |
-| 6 | **Se evalúa siempre contra CEMS** | Es el único etiquetado hecho por analistas mirando otras imágenes |
-
-El detalle completo, con las alternativas descartadas y el porqué, está en
-[`docs/decisiones.md`](docs/decisiones.md). Estas seis son el resumen de **B1-B13**
-(`decisiones.md` §1.1) y **D1-D20** (`dataset.md` §7).
+Sentinel-1, Sentinel-2 y la meteorología **no forman parte del modelo entrenado**: están
+previstos para una segunda versión.
 
 ## Estado
 
+<<<<<<< HEAD
 **Modelos entrenados (`M-A`, `M-B`, Tversky y desde cero) y dataset canónico regenerado.**
 El dataset vigente contiene **296 muestras únicas en 40 series**, con horizontes continuos,
 inventario de calidad y capas estáticas validadas.
@@ -72,20 +53,106 @@ estabiliza el umbral entre folds (`0,10–0,20`) y eleva la precisión al **39,5
 en frío **no está representado** y no se publica un desempeño para él; las bandas de horizonte
 se reportan solo como diagnóstico y no filtran nada. La tabla completa, con IoU, precisión,
 recall, soporte por banda y recuentos evaluables, está en
+=======
+**Modelo entrenado y dataset canónico regenerado (2026-11-16).** El dataset vigente tiene
+**295 muestras únicas en 40 series**, con horizontes continuos, inventario de calidad y
+capas estáticas validadas. El run canónico es `prop_v4_integrity` (semilla 42), con umbral
+operativo congelado en **0,10**.
+
+Conjunto de test (fold -1, 25 muestras, 7 series), modelo y baselines al mismo umbral y
+sobre el mismo subconjunto:
+
+| Modelo | F1 (etiqueta de ensamblaje) | F1 (referencia = propagación real) |
+|---|---:|---:|
+| B1 dilatación radial | 15,94% | 7,30% |
+| Trivial "todo quemado" | 16,29% | 8,42% |
+| **Modelo de producción** (`prop_v4_integrity`) | **36,51%** | **14,80%** |
+
+**El número publicable es el de la referencia (14,80%)**: la etiqueta de ensamblaje incluye
+quemado que TMB-S3 no detectó, y eso la hace mucho más fácil de acertar. El arranque en
+frío **no está representado** y no se publica un desempeño para él; las bandas de
+horizonte se reportan solo como diagnóstico y no filtran nada. La tabla completa —IoU,
+precisión, recall, soporte por banda y recuentos evaluables— está en
+>>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
 [`docs/operacion.md`](docs/operacion.md) §9.
 
-El run anterior `prop_v4` queda como **histórico y no publicable**: su índice tenía entradas
-duplicadas y una serie de test con WorldCover vacío, así que sus métricas no son
-comparables con las del run canónico.
+Dos cosas que conviene saber antes de citar cifras:
+
+- El run anterior `prop_v4` queda como **histórico y no publicable**: su índice tenía
+  entradas duplicadas y una serie de test con WorldCover vacío.
+- El preentrenamiento con MCD64A1 (M-A → M-B) **está implementado y no aporta**: con los
+  runs actuales, entrenar desde cero iguala o supera al modelo preentrenado. Está
+  documentado como diagnóstico en [`docs/operacion.md`](docs/operacion.md) §9.
+
+## Puesta en marcha
+
+```bash
+# 1. Entorno (elige el extra de tu GPU: rocm | cuda | cpu)
+uv sync --extra rocm --group dev
+cp .env.example .env        # credenciales de Earth Engine y almacenamiento compartido
+
+# 1b. Checkpoint de TMB-S3 (el generador de cicatriz). El repo de Hugging Face es
+#     privado: hay que autenticarse (hf auth login) y aceptar la licencia.
+uv run python -c "from huggingface_hub import snapshot_download; \
+  snapshot_download('links-ads/tmb-s3-models', local_dir='models/tmb_s3', \
+                    allow_patterns=['convlstm_segformer_prepost_subset/*'])"
+#     -> models/tmb_s3/convlstm_segformer_prepost_subset/model.safetensors
+
+# 2. Dataset. No se versiona en Git: cada máquina genera el suyo (~20 s en GPU).
+#    Requiere las descargas previas (CEMS, OLCI, DEM y WorldCover):
+#    el pipeline completo está en docs/dataset.md §11.
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+
+# 3. Baselines de referencia (B0, B1 y el trivial "todo quemado")
+uv run --extra rocm python scripts/evaluate_baselines.py
+
+# 4. Entrenamiento: validación cruzada de 5 folds (~2 min con el dataset vigente)
+uv run --extra rocm python scripts/train_propagation.py \
+      --epochs 15 --seed 42 --tag prop_v4_integrity
+
+# 5. Reevaluar un run sin reentrenar, o auditar el dataset
+uv run --extra rocm python scripts/train_propagation.py --eval-only checkpoints/<run>
+uv run --extra rocm python scripts/audit_dataset_integrity.py \
+      --index data/processed/dataset_index.json --output runs/dataset_integrity_production.json
+
+# 6. Verificar que los artefactos canónicos no han cambiado
+uv run --extra rocm python scripts/verify_canonical_artifacts.py
+
+# Tests
+uv run pytest
+```
+
+**Antes de la primera descarga** hay que tener cuenta de Google Earth Engine y un proyecto
+registrado: el arranque, los dos roles que hacen falta y los mensajes de error típicos
+están en [`docs/operacion.md`](docs/operacion.md) §6.1. El paso 2 (generar el dataset)
+**no es opcional** después de tocar el generador de cicatriz o la ventana temporal: la
+cicatriz y el target quedan horneados en los `.npz`.
+
+## Las seis decisiones que definen el proyecto
+
+| | Decisión | Por qué |
+|---|---|---|
+| 1 | **La cicatriz la pone TMB-S3, congelado** | CEMS no existe en operación; con un modelo, la cicatriz se produce igual al entrenar y al predecir |
+| 2 | **Se audita qué sabe TMB-S3** | Se sabe de memoria 50 de nuestras 96 series: esas series quedan fuera del dataset |
+| 3 | **El objetivo se mide desde la última imagen** | Medir desde la ronda anterior contaría quemado que ya se ve en la imagen |
+| 4 | **Validación cruzada en 5 bloques** | Con tan pocas series, un reparto fijo evaluaría una fracción y desperdiciaría el resto |
+| 5 | **La resolución es 300 m** | Es la banda útil: a más resolución no hay imágenes tan frecuentes |
+| 6 | **Se evalúa siempre contra CEMS** | Es el único etiquetado hecho por analistas mirando otras imágenes |
+
+El detalle completo, con las alternativas descartadas y el porqué, está en
+[`docs/decisiones.md`](docs/decisiones.md). Estas seis son el resumen de **B1-B13**
+(`decisiones.md` §1.1) y **D1-D22** (`dataset.md` §7).
 
 ## Documentación
 
+Empieza por [`docs/README.md`](docs/README.md), que es el índice y el mapa de qué dato vive
+en qué fichero.
+
 | Documento | Contenido |
 |---|---|
-| [`docs/README.md`](docs/README.md) | Índice y mapa de qué dato vive en qué fichero |
-| [`docs/decisiones.md`](docs/decisiones.md) | Decisiones tomadas y pendientes, riesgos, preguntas abiertas |
-| [`docs/dataset.md`](docs/dataset.md) | Qué es una muestra, qué se predice, reglas de construcción y protocolo de evaluación |
-| [`docs/operacion.md`](docs/operacion.md) | Qué necesita el modelo en inferencia: entradas, retrasos, ciclo operativo |
+| [`docs/dataset.md`](docs/dataset.md) | Qué es una muestra, qué se predice, el pipeline de construcción, las reglas D1-D22 y el protocolo de evaluación |
+| [`docs/operacion.md`](docs/operacion.md) | Qué necesita el modelo en inferencia, cómo se regenera el dataset, los resultados canónicos y el preentrenamiento MCD64A1 |
+| [`docs/decisiones.md`](docs/decisiones.md) | Decisiones cerradas (B), pendientes (P), alternativas descartadas, riesgos (R) y preguntas abiertas |
 | [`docs/investigacion.md`](docs/investigacion.md) | Estado del arte, por qué 300 m, cómo verificar los números |
 | [`docs/datos.md`](docs/datos.md) | Catálogo de fuentes: dónde está cada dato, IDs exactos, endpoints, licencias |
 | [`docs/experiment-tracking.md`](docs/experiment-tracking.md) | Guía de TensorBoard compartido, checkpoints y sincronización NFS |
@@ -95,8 +162,14 @@ comparables con las del run canónico.
 
 ## Próximos pasos (v2 / trabajo futuro)
 
-1. Ampliar el conjunto y recuperar `EMSR785_AOI01` con una fuente estática que no devuelva
+1. **Implementar B2 (advección por viento)** y compararlo contra el mismo conjunto y
+   umbral: es el criterio de aceptación del proyecto (el modelo debe superar la física
+   sin ML) y su definición exacta es la pendiente P2.
+2. **Estratificar la evaluación** por cambio de sensor y publicar el estrato de control de
+   TMB-S3: los datos ya están en el índice, falta el reporte (P8).
+3. Ampliar el conjunto y recuperar `EMSR785_AOI01` con una fuente estática que no devuelva
    WorldCover vacío.
+<<<<<<< HEAD
 2. Obtener observaciones genuinas de arranque en frío o mantenerlo explícitamente fuera del
    alcance de desempeño.
 3. Incorporar canales meteorológicos de viento (ERA5/GFS) e implementar B2 (advección por
@@ -105,6 +178,12 @@ comparables con las del run canónico.
 
 La auditoría reproducible del dataset, el barrido de umbrales y la procedencia de los runs están en
 `scripts/audit_dataset_integrity.py`, `scripts/sweep_thresholds.py` y `operational_threshold.json`, respectivamente.
+=======
+4. Evaluar la calibración de las salidas y la estabilidad del umbral por fold y horizonte.
+5. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
+6. Obtener observaciones genuinas de arranque en frío, o mantenerlo explícitamente fuera
+   del alcance de desempeño.
+>>>>>>> 2520c57 (docs: alinear la documentacion con el codigo y las specs)
 
 ## Estructura
 
@@ -112,10 +191,11 @@ La auditoría reproducible del dataset, el barrido de umbrales y la procedencia 
 .
 ├── README.md
 ├── docs/          # la documentación (ver docs/README.md)
-├── src/burn_scar/ # modelo, dataset, métricas y utilidades compartidas
+├── src/burn_scar/ # modelo, dataset, métricas, baselines y utilidades compartidas
 ├── scripts/       # ingesta, ensamblado, entrenamiento, evaluación y auditoría
 ├── tests/
-├── openspec/      # flujo de trabajo OpenSpec (specs de entorno y tracking)
+├── openspec/      # flujo de trabajo OpenSpec (specs de dataset, evaluación, entorno y tracking)
+├── artefactos/    # sumas de verificación de los artefactos canónicos
 ├── pyproject.toml
 └── .env.example
 ```
