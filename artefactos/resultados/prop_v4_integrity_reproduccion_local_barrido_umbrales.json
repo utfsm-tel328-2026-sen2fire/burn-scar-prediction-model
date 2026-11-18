@@ -1,0 +1,177 @@
+{
+  "split": "test",
+  "index": "data/processed/dataset_index.json",
+  "thresholds": [
+    0.1,
+    0.2
+  ],
+  "best_threshold_by_f1": 0.1,
+  "summary": {
+    "0.1": {
+      "f1": 0.4297382295439277,
+      "iou": 0.32644825405728123,
+      "precision": 0.4105983242878367,
+      "recall": 0.6187962201980437,
+      "area_ratio": 1.3992492247429413
+    },
+    "0.2": {
+      "f1": 0.41927670199667555,
+      "iou": 0.3218797762838709,
+      "precision": 0.44257409543660514,
+      "recall": 0.5206607670893136,
+      "area_ratio": 1.0643734643734644
+    }
+  },
+  "per_checkpoint": [
+    {
+      "checkpoint": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_0.pt",
+      "fold": 0,
+      "metrics": {
+        "0.1": {
+          "f1": 0.41870249932467524,
+          "iou": 0.30838874547780026,
+          "precision": 0.3507824470297483,
+          "recall": 0.6573131305266278,
+          "area_ratio": 1.6946303247919048,
+          "pred_px": 20766,
+          "true_px": 12254,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        },
+        "0.2": {
+          "f1": 0.4190412528556965,
+          "iou": 0.31729032379913097,
+          "precision": 0.39241541059791146,
+          "recall": 0.5731671076054713,
+          "area_ratio": 1.387023387023387,
+          "pred_px": 15242,
+          "true_px": 10989,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        }
+      }
+    },
+    {
+      "checkpoint": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_1.pt",
+      "fold": 1,
+      "metrics": {
+        "0.1": {
+          "f1": 0.43273421885796476,
+          "iou": 0.3283965559971979,
+          "precision": 0.4148705237502432,
+          "recall": 0.6315867743990846,
+          "area_ratio": 1.5609596866329363,
+          "pred_px": 19128,
+          "true_px": 12254,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        },
+        "0.2": {
+          "f1": 0.428591499080614,
+          "iou": 0.32144440899707377,
+          "precision": 0.45607820433448254,
+          "recall": 0.5434644749574403,
+          "area_ratio": 1.1243971243971245,
+          "pred_px": 12356,
+          "true_px": 10989,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        }
+      }
+    },
+    {
+      "checkpoint": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_2.pt",
+      "fold": 2,
+      "metrics": {
+        "0.1": {
+          "f1": 0.42394787106210624,
+          "iou": 0.3157452889652926,
+          "precision": 0.3752855020810774,
+          "recall": 0.6568955989036755,
+          "area_ratio": 1.6136771666394647,
+          "pred_px": 19774,
+          "true_px": 12254,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        },
+        "0.2": {
+          "f1": 0.4349158240639038,
+          "iou": 0.3322877954097457,
+          "precision": 0.45205978499348815,
+          "recall": 0.5434962074322363,
+          "area_ratio": 1.2292292292292293,
+          "pred_px": 13508,
+          "true_px": 10989,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        }
+      }
+    },
+    {
+      "checkpoint": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_3.pt",
+      "fold": 3,
+      "metrics": {
+        "0.1": {
+          "f1": 0.4728931868281864,
+          "iou": 0.3661641145323765,
+          "precision": 0.45747750349763894,
+          "recall": 0.6972990716658857,
+          "area_ratio": 1.319405908274849,
+          "pred_px": 16168,
+          "true_px": 12254,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        },
+        "0.2": {
+          "f1": 0.45744188387677526,
+          "iou": 0.35480857597293697,
+          "precision": 0.4514015990023589,
+          "recall": 0.6040467097915977,
+          "area_ratio": 1.1076531076531078,
+          "pred_px": 12172,
+          "true_px": 10989,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        }
+      }
+    },
+    {
+      "checkpoint": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_4.pt",
+      "fold": 4,
+      "metrics": {
+        "0.1": {
+          "f1": 0.4004133716467061,
+          "iou": 0.3135465653137389,
+          "precision": 0.45457564508047593,
+          "recall": 0.45088652549494496,
+          "area_ratio": 0.8075730373755509,
+          "pred_px": 9896,
+          "true_px": 12254,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        },
+        "0.2": {
+          "f1": 0.3563930501063882,
+          "iou": 0.28356777724046717,
+          "precision": 0.46091547825478457,
+          "recall": 0.3391293356598227,
+          "area_ratio": 0.47356447356447356,
+          "pred_px": 5204,
+          "true_px": 10989,
+          "n_series_evaluated": 7,
+          "n_samples_evaluated": 24,
+          "n_samples_total": 25
+        }
+      }
+    }
+  ]
+}

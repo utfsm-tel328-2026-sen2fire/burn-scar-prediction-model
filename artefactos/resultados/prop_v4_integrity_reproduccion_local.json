@@ -1,0 +1,209 @@
+{
+  "operational_threshold": 0.2,
+  "per_fold_best_threshold": [
+    0.1,
+    0.5,
+    0.2,
+    0.1,
+    0.5
+  ],
+  "threshold_spread": 0.4,
+  "run_tag": "prop_v4_integrity",
+  "seed": 42,
+  "dataset_index": "data/processed/dataset_index.json",
+  "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38",
+  "dataset_content_sha256": "b973e5550aa4d00335542330bc4fca46810c1ed9ba9c0e99c5610efb9d3289dd",
+  "dataset_generator_version": "494660dfbb91",
+  "dataset_schema_version": 2,
+  "dataset_target_mode": "scar",
+  "dataset_counts": {
+    "total_entries": 296,
+    "total_unique_samples": 296,
+    "total_unique_files": 296,
+    "total_series": 40,
+    "folds_distribution": {
+      "fold_0": 29,
+      "fold_1": 15,
+      "fold_2": 108,
+      "fold_3": 96,
+      "fold_4": 23
+    },
+    "out_of_domain_samples": 25,
+    "horizon_distribution": {
+      "count": 296,
+      "min": 0.001,
+      "p25": 0.027,
+      "median": 0.903,
+      "p75": 1.04425,
+      "p90": 2.1695,
+      "max": 7.024,
+      "bands": {
+        "0-1d": 171,
+        "1-3d": 99,
+        "3-7d": 25,
+        "7-14d": 1,
+        "14d+": 0
+      }
+    },
+    "scar_coverage": {
+      "samples_total": 296,
+      "cold_start_samples": 0,
+      "cold_start_series": 0,
+      "cold_start_represented": false
+    },
+    "excluded_series": [
+      {
+        "series_id": "EMSR785_AOI01",
+        "stage": "static_layers",
+        "reason": "invalid_static_layers",
+        "detail": "WorldCover contiene clases no admitidas: [0]; WorldCover está completamente vacío"
+      }
+    ]
+  },
+  "horizon_support": {
+    "count": 296,
+    "min": 0.001,
+    "p25": 0.027,
+    "median": 0.903,
+    "p75": 1.04425,
+    "p90": 2.1695,
+    "max": 7.024,
+    "bands": {
+      "0-1d": 171,
+      "1-3d": 99,
+      "3-7d": 25,
+      "7-14d": 1,
+      "14d+": 0
+    }
+  },
+  "cold_start_coverage": {
+    "samples_total": 296,
+    "cold_start_samples": 0,
+    "cold_start_series": 0,
+    "cold_start_represented": false
+  },
+  "checkpoints": [
+    {
+      "fold": 0,
+      "path": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_0.pt",
+      "file_sha256": "17c6142bb1305b452acd0d9b5d4fb7f83f3232b9ef94d9610cb56ebff735c7ab",
+      "epoch": 9,
+      "seed": 42,
+      "weights_sha256": "aca7069e64f49aa6747353bf26566420ad3c14674c85fae1587a4a634f942453",
+      "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38"
+    },
+    {
+      "fold": 1,
+      "path": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_1.pt",
+      "file_sha256": "afba746f74539fbb5f2a8f4f636c7a06f41f30f399a5e42f558925c99ceea3d5",
+      "epoch": 9,
+      "seed": 43,
+      "weights_sha256": "267f41fcbc1dee9630a56a4b13c07580839aa19e23a2092f348e00fc6a85a07a",
+      "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38"
+    },
+    {
+      "fold": 2,
+      "path": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_2.pt",
+      "file_sha256": "271898334c609508949f8baecabc9536ed601fea81bacde6e59be13b38e3fcbb",
+      "epoch": 15,
+      "seed": 44,
+      "weights_sha256": "117a845a7dff744b5627a54ecd61e2275d454866e0d1f6ba1bdb033e135febc7",
+      "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38"
+    },
+    {
+      "fold": 3,
+      "path": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_3.pt",
+      "file_sha256": "d02a91a0bfe192c70b9dc30ff8518c8eb85884d3036a50a5243586263b2e7824",
+      "epoch": 14,
+      "seed": 45,
+      "weights_sha256": "3b0ea6a00da3d388174654a64259f1f942c1e6e6582cf2d4326d8fb0f9370268",
+      "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38"
+    },
+    {
+      "fold": 4,
+      "path": "checkpoints/khaen_prop_v4_integrity_20261118_201129/best_fold_4.pt",
+      "file_sha256": "6aa67dfc66b4b74f1d4a085da6216b7e86e3761cf429e95a65e062da7587b57a",
+      "epoch": 10,
+      "seed": 46,
+      "weights_sha256": "3dc6273c14b624b50c74b6833ea5a1c674fbde82eb1c16b3d71f49967d7853b6",
+      "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38"
+    }
+  ],
+  "test_fold": -1,
+  "test_metrics": {
+    "f1": 0.41927670199667555,
+    "iou": 0.3218797762838709,
+    "precision": 0.44257409543660514,
+    "recall": 0.5206607670893136,
+    "n_series_evaluated": 7,
+    "n_samples_evaluated": 24,
+    "n_samples_total": 25,
+    "evaluated_set": {
+      "index_entries": 296,
+      "index_unique_samples": 296,
+      "index_unique_files": 296,
+      "index_series": 40,
+      "split_samples": 25,
+      "split_unique_samples": 25,
+      "split_unique_files": 25,
+      "split_series": 7
+    },
+    "horizon_strata": {
+      "0-1d": {
+        "f1": 0.3567537949038424,
+        "iou": 0.26250953629433654,
+        "precision": 0.36478592157049183,
+        "recall": 0.46574941541776926,
+        "n_series_evaluated": 6,
+        "n_samples_evaluated": 18,
+        "n_samples_total": 19
+      },
+      "1-3d": {
+        "f1": 0.49149628612966206,
+        "iou": 0.37624870744470273,
+        "precision": 0.5799351183496275,
+        "recall": 0.5746922704251977,
+        "n_series_evaluated": 5,
+        "n_samples_evaluated": 6,
+        "n_samples_total": 6
+      }
+    },
+    "cold_start": {
+      "represented": false,
+      "n_samples_total": 0,
+      "n_series_total": 0,
+      "warning": "El arranque en frío no está representado en el conjunto de test."
+    }
+  },
+  "test_metrics_reference_target": {
+    "f1": 0.07916144580214038,
+    "iou": 0.04576363861267447,
+    "precision": 0.06223012759589509,
+    "recall": 0.2522565399354161,
+    "n_series_evaluated": 7,
+    "n_samples_evaluated": 23,
+    "n_samples_total": 25,
+    "horizon_strata": {
+      "0-1d": {
+        "f1": 0.09146027693691533,
+        "iou": 0.05329182780739612,
+        "precision": 0.0751311055270282,
+        "recall": 0.24783868599644987,
+        "n_series_evaluated": 6,
+        "n_samples_evaluated": 17,
+        "n_samples_total": 19
+      },
+      "1-3d": {
+        "f1": 0.0781300959799057,
+        "iou": 0.04405247314280771,
+        "precision": 0.05599139932318727,
+        "recall": 0.2830102911422801,
+        "n_series_evaluated": 5,
+        "n_samples_evaluated": 6,
+        "n_samples_total": 6
+      }
+    }
+  },
+  "note": "El umbral se elige con los folds de validación y se congela aquí. Para estimar área quemada NO hace falta umbral: suma las probabilidades. Las métricas 'reference' son contra el crecimiento real entre rondas CEMS: son el desempeño en propagación; las de ensamblaje son contra el target que incluye quemado no detectado por TMB-S3.",
+  "_nota": "Reproduccion local (AMD ROCm) del run `prop_v4_integrity` sobre el dataset canonico de 296 muestras. Las rutas absolutas se han relativizado; el resto es el archivo tal cual lo escribe el entrenamiento. Las cifras del run publicado estan en docs/operacion.md §9 y sus sumas en artefactos/canonicos.json."
+}

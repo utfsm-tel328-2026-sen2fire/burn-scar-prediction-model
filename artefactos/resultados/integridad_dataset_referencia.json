@@ -1,0 +1,46 @@
+{
+  "index": "data/processed_target_cems/dataset_index.json",
+  "index_sha256": "73ce2f46399e881db73fb8bf6b7dbf9cc6fc5d50e132e8468403b01cb9294de2",
+  "schema_version": 2,
+  "generator_version": "494660dfbb91",
+  "target_mode": "cems",
+  "ok": true,
+  "errors": [],
+  "counts": {
+    "entries": 296,
+    "unique_samples": 296,
+    "unique_files": 296,
+    "series": 40,
+    "files_on_disk": 296
+  },
+  "horizon_distribution": {
+    "count": 296,
+    "min": 0.001,
+    "p25": 0.027,
+    "median": 0.903,
+    "p75": 1.04425,
+    "p90": 2.1695,
+    "max": 7.024,
+    "bands": {
+      "0-1d": 171,
+      "1-3d": 99,
+      "3-7d": 25,
+      "7-14d": 1,
+      "14d+": 0
+    }
+  },
+  "scar_coverage": {
+    "samples_total": 296,
+    "cold_start_samples": 0,
+    "cold_start_series": 0,
+    "cold_start_represented": false
+  },
+  "excluded_series": [
+    {
+      "series_id": "EMSR785_AOI01",
+      "stage": "static_layers",
+      "reason": "invalid_static_layers",
+      "detail": "WorldCover contiene clases no admitidas: [0]; WorldCover está completamente vacío"
+    }
+  ]
+}

@@ -1,0 +1,655 @@
+{
+  "provenance": {
+    "dataset_index": "data/processed/dataset_index.json",
+    "dataset_index_sha256": "a41e48f1613717a3bae11c17ccdc827c5d673f9426fe582b32fb1f23ed4d1b38",
+    "dataset_content_sha256": "b973e5550aa4d00335542330bc4fca46810c1ed9ba9c0e99c5610efb9d3289dd",
+    "dataset_generator_version": "494660dfbb91",
+    "dataset_schema_version": 2,
+    "dataset_target_mode": "scar",
+    "threshold": 0.2,
+    "threshold_source": "explícito",
+    "checkpoint_run": null
+  },
+  "sets": {
+    "validation": {
+      "B0: Persistencia (Cero Crecimiento)": {
+        "model": "B0: Persistencia (Cero Crecimiento)",
+        "n_series": 33,
+        "n_series_evaluated": 33,
+        "n_samples": 271,
+        "n_samples_evaluated": 251,
+        "f1_event_mean": 0.0,
+        "f1_event_std": 0.0,
+        "iou_event_mean": 0.0,
+        "precision_mean": 0.0,
+        "recall_mean": 0.0,
+        "ref_available": true,
+        "ref_f1_event_mean": 0.0,
+        "ref_iou_event_mean": 0.0,
+        "ref_precision_mean": 0.0,
+        "ref_recall_mean": 0.0,
+        "ref_n_series_evaluated": 33,
+        "ref_n_samples_evaluated": 224,
+        "ref_n_samples_total": 271,
+        "evaluated_set": {
+          "index_entries": 296,
+          "index_unique_samples": 296,
+          "index_unique_files": 296,
+          "index_series": 40,
+          "split_samples": 271,
+          "split_unique_samples": 271,
+          "split_unique_files": 271,
+          "split_series": 33
+        },
+        "horizon_strata": {
+          "0-1d": {
+            "assembly": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 33,
+              "n_series_total": 33,
+              "n_samples_evaluated": 140,
+              "n_samples_total": 152
+            },
+            "reference": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 32,
+              "n_series_total": 33,
+              "n_samples_evaluated": 125,
+              "n_samples_total": 152
+            }
+          },
+          "1-3d": {
+            "assembly": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 26,
+              "n_series_total": 26,
+              "n_samples_evaluated": 85,
+              "n_samples_total": 93
+            },
+            "reference": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 24,
+              "n_series_total": 26,
+              "n_samples_evaluated": 78,
+              "n_samples_total": 93
+            }
+          },
+          "3-7d": {
+            "assembly": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 9,
+              "n_series_total": 9,
+              "n_samples_evaluated": 25,
+              "n_samples_total": 25
+            },
+            "reference": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 7,
+              "n_series_total": 9,
+              "n_samples_evaluated": 20,
+              "n_samples_total": 25
+            }
+          },
+          "7-14d": {
+            "assembly": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 1,
+              "n_series_total": 1,
+              "n_samples_evaluated": 1,
+              "n_samples_total": 1
+            },
+            "reference": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 1,
+              "n_series_total": 1,
+              "n_samples_evaluated": 1,
+              "n_samples_total": 1
+            }
+          }
+        },
+        "cold_start": {
+          "represented": false,
+          "n_samples_total": 0,
+          "n_series_total": 0,
+          "assembly": null,
+          "reference": null,
+          "warning": "El arranque en frío no está representado en el dataset evaluado."
+        }
+      },
+      "B1: Dilatación Radial Isótropa": {
+        "model": "B1: Dilatación Radial Isótropa",
+        "n_series": 33,
+        "n_series_evaluated": 33,
+        "n_samples": 271,
+        "n_samples_evaluated": 251,
+        "f1_event_mean": 0.15290296605312467,
+        "f1_event_std": 0.11623168025750223,
+        "iou_event_mean": 0.08951060649463378,
+        "precision_mean": 0.20677350960308855,
+        "recall_mean": 0.34641288027084893,
+        "ref_available": true,
+        "ref_f1_event_mean": 0.04327256272693622,
+        "ref_iou_event_mean": 0.022981416896159974,
+        "ref_precision_mean": 0.04449281632245745,
+        "ref_recall_mean": 0.189198628547049,
+        "ref_n_series_evaluated": 33,
+        "ref_n_samples_evaluated": 224,
+        "ref_n_samples_total": 271,
+        "evaluated_set": {
+          "index_entries": 296,
+          "index_unique_samples": 296,
+          "index_unique_files": 296,
+          "index_series": 40,
+          "split_samples": 271,
+          "split_unique_samples": 271,
+          "split_unique_files": 271,
+          "split_series": 33
+        },
+        "horizon_strata": {
+          "0-1d": {
+            "assembly": {
+              "f1": 0.1405642487175247,
+              "iou": 0.08023154426163277,
+              "precision": 0.2108884183119966,
+              "recall": 0.25935083842728673,
+              "n_series_evaluated": 33,
+              "n_series_total": 33,
+              "n_samples_evaluated": 140,
+              "n_samples_total": 152
+            },
+            "reference": {
+              "f1": 0.042640905484504936,
+              "iou": 0.02251051841077944,
+              "precision": 0.05003947291210039,
+              "recall": 0.12326579987287936,
+              "n_series_evaluated": 32,
+              "n_series_total": 33,
+              "n_samples_evaluated": 125,
+              "n_samples_total": 152
+            }
+          },
+          "1-3d": {
+            "assembly": {
+              "f1": 0.1714887703339885,
+              "iou": 0.10388047122722933,
+              "precision": 0.16489955440462278,
+              "recall": 0.49205798803870354,
+              "n_series_evaluated": 26,
+              "n_series_total": 26,
+              "n_samples_evaluated": 85,
+              "n_samples_total": 93
+            },
+            "reference": {
+              "f1": 0.04163337622627231,
+              "iou": 0.022067964640909984,
+              "precision": 0.03104719798324802,
+              "recall": 0.24949741198720302,
+              "n_series_evaluated": 24,
+              "n_series_total": 26,
+              "n_samples_evaluated": 78,
+              "n_samples_total": 93
+            }
+          },
+          "3-7d": {
+            "assembly": {
+              "f1": 0.14934493214356936,
+              "iou": 0.09248244833678071,
+              "precision": 0.10224331637200426,
+              "recall": 0.7428609359082841,
+              "n_series_evaluated": 9,
+              "n_series_total": 9,
+              "n_samples_evaluated": 25,
+              "n_samples_total": 25
+            },
+            "reference": {
+              "f1": 0.028715756591431836,
+              "iou": 0.015253771808265428,
+              "precision": 0.016343322249932898,
+              "recall": 0.36865903231297764,
+              "n_series_evaluated": 7,
+              "n_series_total": 9,
+              "n_samples_evaluated": 20,
+              "n_samples_total": 25
+            }
+          },
+          "7-14d": {
+            "assembly": {
+              "f1": 0.607822184227399,
+              "iou": 0.43659809640773717,
+              "precision": 0.4376731301939058,
+              "recall": 0.9944055944055944,
+              "n_series_evaluated": 1,
+              "n_series_total": 1,
+              "n_samples_evaluated": 1,
+              "n_samples_total": 1
+            },
+            "reference": {
+              "f1": 0.02380225816295392,
+              "iou": 0.012044471896232242,
+              "precision": 0.012044471896232242,
+              "recall": 1.0,
+              "n_series_evaluated": 1,
+              "n_series_total": 1,
+              "n_samples_evaluated": 1,
+              "n_samples_total": 1
+            }
+          }
+        },
+        "cold_start": {
+          "represented": false,
+          "n_samples_total": 0,
+          "n_series_total": 0,
+          "assembly": null,
+          "reference": null,
+          "warning": "El arranque en frío no está representado en el dataset evaluado."
+        }
+      },
+      "TRIVIAL: Todo quemado (escala mínima, no es un modelo)": {
+        "model": "TRIVIAL: Todo quemado (escala mínima, no es un modelo)",
+        "n_series": 33,
+        "n_series_evaluated": 33,
+        "n_samples": 271,
+        "n_samples_evaluated": 251,
+        "f1_event_mean": 0.11296868305459118,
+        "f1_event_std": 0.11829444309823321,
+        "iou_event_mean": 0.06576422368302531,
+        "precision_mean": 0.06576422368302531,
+        "recall_mean": 1.0,
+        "ref_available": true,
+        "ref_f1_event_mean": 0.04716137892136079,
+        "ref_iou_event_mean": 0.026153215112171925,
+        "ref_precision_mean": 0.026153215112171925,
+        "ref_recall_mean": 1.0,
+        "ref_n_series_evaluated": 33,
+        "ref_n_samples_evaluated": 224,
+        "ref_n_samples_total": 271,
+        "evaluated_set": {
+          "index_entries": 296,
+          "index_unique_samples": 296,
+          "index_unique_files": 296,
+          "index_series": 40,
+          "split_samples": 271,
+          "split_unique_samples": 271,
+          "split_unique_files": 271,
+          "split_series": 33
+        },
+        "horizon_strata": {
+          "0-1d": {
+            "assembly": {
+              "f1": 0.11234275823702364,
+              "iou": 0.06517877749618,
+              "precision": 0.06517877749618,
+              "recall": 1.0,
+              "n_series_evaluated": 33,
+              "n_series_total": 33,
+              "n_samples_evaluated": 140,
+              "n_samples_total": 152
+            },
+            "reference": {
+              "f1": 0.051144617638627474,
+              "iou": 0.028810302159230236,
+              "precision": 0.028810302159230236,
+              "recall": 1.0,
+              "n_series_evaluated": 32,
+              "n_series_total": 33,
+              "n_samples_evaluated": 125,
+              "n_samples_total": 152
+            }
+          },
+          "1-3d": {
+            "assembly": {
+              "f1": 0.10659415790510238,
+              "iou": 0.0628411860090851,
+              "precision": 0.0628411860090851,
+              "recall": 1.0,
+              "n_series_evaluated": 26,
+              "n_series_total": 26,
+              "n_samples_evaluated": 85,
+              "n_samples_total": 93
+            },
+            "reference": {
+              "f1": 0.04344602656343343,
+              "iou": 0.02414705587600036,
+              "precision": 0.02414705587600036,
+              "recall": 1.0,
+              "n_series_evaluated": 24,
+              "n_series_total": 26,
+              "n_samples_evaluated": 78,
+              "n_samples_total": 93
+            }
+          },
+          "3-7d": {
+            "assembly": {
+              "f1": 0.09492301415797305,
+              "iou": 0.05672698564106571,
+              "precision": 0.05672698564106571,
+              "recall": 1.0,
+              "n_series_evaluated": 9,
+              "n_series_total": 9,
+              "n_samples_evaluated": 25,
+              "n_samples_total": 25
+            },
+            "reference": {
+              "f1": 0.02968670769769403,
+              "iou": 0.01558577360128322,
+              "precision": 0.01558577360128322,
+              "recall": 1.0,
+              "n_series_evaluated": 7,
+              "n_series_total": 9,
+              "n_samples_evaluated": 20,
+              "n_samples_total": 25
+            }
+          },
+          "7-14d": {
+            "assembly": {
+              "f1": 0.5175533840028954,
+              "iou": 0.34912109375,
+              "precision": 0.34912109375,
+              "recall": 1.0,
+              "n_series_evaluated": 1,
+              "n_series_total": 1,
+              "n_samples_evaluated": 1,
+              "n_samples_total": 1
+            },
+            "reference": {
+              "f1": 0.018927444794952678,
+              "iou": 0.009554140127388535,
+              "precision": 0.009554140127388535,
+              "recall": 1.0,
+              "n_series_evaluated": 1,
+              "n_series_total": 1,
+              "n_samples_evaluated": 1,
+              "n_samples_total": 1
+            }
+          }
+        },
+        "cold_start": {
+          "represented": false,
+          "n_samples_total": 0,
+          "n_series_total": 0,
+          "assembly": null,
+          "reference": null,
+          "warning": "El arranque en frío no está representado en el dataset evaluado."
+        }
+      }
+    },
+    "test": {
+      "B0: Persistencia (Cero Crecimiento)": {
+        "model": "B0: Persistencia (Cero Crecimiento)",
+        "n_series": 7,
+        "n_series_evaluated": 7,
+        "n_samples": 25,
+        "n_samples_evaluated": 24,
+        "f1_event_mean": 0.0,
+        "f1_event_std": 0.0,
+        "iou_event_mean": 0.0,
+        "precision_mean": 0.0,
+        "recall_mean": 0.0,
+        "ref_available": true,
+        "ref_f1_event_mean": 0.0,
+        "ref_iou_event_mean": 0.0,
+        "ref_precision_mean": 0.0,
+        "ref_recall_mean": 0.0,
+        "ref_n_series_evaluated": 7,
+        "ref_n_samples_evaluated": 23,
+        "ref_n_samples_total": 25,
+        "evaluated_set": {
+          "index_entries": 296,
+          "index_unique_samples": 296,
+          "index_unique_files": 296,
+          "index_series": 40,
+          "split_samples": 25,
+          "split_unique_samples": 25,
+          "split_unique_files": 25,
+          "split_series": 7
+        },
+        "horizon_strata": {
+          "1-3d": {
+            "assembly": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 5,
+              "n_series_total": 5,
+              "n_samples_evaluated": 6,
+              "n_samples_total": 6
+            },
+            "reference": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 5,
+              "n_series_total": 5,
+              "n_samples_evaluated": 6,
+              "n_samples_total": 6
+            }
+          },
+          "0-1d": {
+            "assembly": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 6,
+              "n_series_total": 6,
+              "n_samples_evaluated": 18,
+              "n_samples_total": 19
+            },
+            "reference": {
+              "f1": 0.0,
+              "iou": 0.0,
+              "precision": 0.0,
+              "recall": 0.0,
+              "n_series_evaluated": 6,
+              "n_series_total": 6,
+              "n_samples_evaluated": 17,
+              "n_samples_total": 19
+            }
+          }
+        },
+        "cold_start": {
+          "represented": false,
+          "n_samples_total": 0,
+          "n_series_total": 0,
+          "assembly": null,
+          "reference": null,
+          "warning": "El arranque en frío no está representado en el dataset evaluado."
+        }
+      },
+      "B1: Dilatación Radial Isótropa": {
+        "model": "B1: Dilatación Radial Isótropa",
+        "n_series": 7,
+        "n_series_evaluated": 7,
+        "n_samples": 25,
+        "n_samples_evaluated": 24,
+        "f1_event_mean": 0.15379502379877538,
+        "f1_event_std": 0.08390826850823814,
+        "iou_event_mean": 0.08664995106733946,
+        "precision_mean": 0.17778312754192335,
+        "recall_mean": 0.30732027870043815,
+        "ref_available": true,
+        "ref_f1_event_mean": 0.05759912465025728,
+        "ref_iou_event_mean": 0.030374668599433424,
+        "ref_precision_mean": 0.05692858532588065,
+        "ref_recall_mean": 0.11436558199631659,
+        "ref_n_series_evaluated": 7,
+        "ref_n_samples_evaluated": 23,
+        "ref_n_samples_total": 25,
+        "evaluated_set": {
+          "index_entries": 296,
+          "index_unique_samples": 296,
+          "index_unique_files": 296,
+          "index_series": 40,
+          "split_samples": 25,
+          "split_unique_samples": 25,
+          "split_unique_files": 25,
+          "split_series": 7
+        },
+        "horizon_strata": {
+          "1-3d": {
+            "assembly": {
+              "f1": 0.2474114414766439,
+              "iou": 0.14610194545273353,
+              "precision": 0.23296600333704937,
+              "recall": 0.3534601722680592,
+              "n_series_evaluated": 5,
+              "n_series_total": 5,
+              "n_samples_evaluated": 6,
+              "n_samples_total": 6
+            },
+            "reference": {
+              "f1": 0.08239980018315454,
+              "iou": 0.04445536059957243,
+              "precision": 0.06238864092263604,
+              "recall": 0.17547151000843425,
+              "n_series_evaluated": 5,
+              "n_series_total": 5,
+              "n_samples_evaluated": 6,
+              "n_samples_total": 6
+            }
+          },
+          "0-1d": {
+            "assembly": {
+              "f1": 0.15421479324038906,
+              "iou": 0.08620009954084758,
+              "precision": 0.1905490497085335,
+              "recall": 0.301760958762665,
+              "n_series_evaluated": 6,
+              "n_series_total": 6,
+              "n_samples_evaluated": 18,
+              "n_samples_total": 19
+            },
+            "reference": {
+              "f1": 0.061617516242983526,
+              "iou": 0.03226951607203129,
+              "precision": 0.06731707631973251,
+              "recall": 0.10373747250720022,
+              "n_series_evaluated": 6,
+              "n_series_total": 6,
+              "n_samples_evaluated": 17,
+              "n_samples_total": 19
+            }
+          }
+        },
+        "cold_start": {
+          "represented": false,
+          "n_samples_total": 0,
+          "n_series_total": 0,
+          "assembly": null,
+          "reference": null,
+          "warning": "El arranque en frío no está representado en el dataset evaluado."
+        }
+      },
+      "TRIVIAL: Todo quemado (escala mínima, no es un modelo)": {
+        "model": "TRIVIAL: Todo quemado (escala mínima, no es un modelo)",
+        "n_series": 7,
+        "n_series_evaluated": 7,
+        "n_samples": 25,
+        "n_samples_evaluated": 24,
+        "f1_event_mean": 0.14912957935749627,
+        "f1_event_std": 0.10326976805100237,
+        "iou_event_mean": 0.08526135189104464,
+        "precision_mean": 0.08526135189104464,
+        "recall_mean": 1.0,
+        "ref_available": true,
+        "ref_f1_event_mean": 0.062399460782097446,
+        "ref_iou_event_mean": 0.03443763550669772,
+        "ref_precision_mean": 0.03443763550669772,
+        "ref_recall_mean": 1.0,
+        "ref_n_series_evaluated": 7,
+        "ref_n_samples_evaluated": 23,
+        "ref_n_samples_total": 25,
+        "evaluated_set": {
+          "index_entries": 296,
+          "index_unique_samples": 296,
+          "index_unique_files": 296,
+          "index_series": 40,
+          "split_samples": 25,
+          "split_unique_samples": 25,
+          "split_unique_files": 25,
+          "split_series": 7
+        },
+        "horizon_strata": {
+          "1-3d": {
+            "assembly": {
+              "f1": 0.19731762732760807,
+              "iou": 0.11276718717823311,
+              "precision": 0.11276718717823311,
+              "recall": 1.0,
+              "n_series_evaluated": 5,
+              "n_series_total": 5,
+              "n_samples_evaluated": 6,
+              "n_samples_total": 6
+            },
+            "reference": {
+              "f1": 0.07515024387063461,
+              "iou": 0.04139577242423069,
+              "precision": 0.04139577242423069,
+              "recall": 1.0,
+              "n_series_evaluated": 5,
+              "n_series_total": 5,
+              "n_samples_evaluated": 6,
+              "n_samples_total": 6
+            }
+          },
+          "0-1d": {
+            "assembly": {
+              "f1": 0.14436607502300103,
+              "iou": 0.08352477730199614,
+              "precision": 0.08352477730199614,
+              "recall": 1.0,
+              "n_series_evaluated": 6,
+              "n_series_total": 6,
+              "n_samples_evaluated": 18,
+              "n_samples_total": 19
+            },
+            "reference": {
+              "f1": 0.07397638380482406,
+              "iou": 0.040955791034371004,
+              "precision": 0.040955791034371004,
+              "recall": 1.0,
+              "n_series_evaluated": 6,
+              "n_series_total": 6,
+              "n_samples_evaluated": 17,
+              "n_samples_total": 19
+            }
+          }
+        },
+        "cold_start": {
+          "represented": false,
+          "n_samples_total": 0,
+          "n_series_total": 0,
+          "assembly": null,
+          "reference": null,
+          "warning": "El arranque en frío no está representado en el dataset evaluado."
+        }
+      }
+    }
+  }
+}
