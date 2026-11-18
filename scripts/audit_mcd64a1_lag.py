@@ -109,7 +109,7 @@ def audit_series_lag(series_meta: dict, labels_dir: Path) -> dict:
         img_id = item["id"]
         props = item.get("properties", {})
         time_start = props.get("system:time_start", 0)
-        img_year = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.timezone.utc).year
+        img_year = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.UTC).year
 
         try:
             arr = _download_mcd_patch(ee.Image(img_id).select(MCD_BANDS), region, crs_str)
@@ -220,7 +220,7 @@ def main() -> int:
 
     ee.Initialize()
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    with open(args.manifest, encoding="utf-8") as f:
         manifest = json.load(f)
 
     series_list = manifest.get("series", [])
@@ -252,7 +252,7 @@ def main() -> int:
     clean_results = [{k: v for k, v in r.items() if k != "_raw_lags"} for r in results]
 
     payload = {
-        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "generated_at": dt.datetime.now(dt.UTC).isoformat(),
         "manifest": args.manifest,
         "summary": summary,
         "series": clean_results,
@@ -265,7 +265,8 @@ def main() -> int:
     print("RESUMEN R19 (BurnDate - CEMS observed_time)")
     print("=" * 72)
     print(
-        f"Series con detección MCD64A1: {summary['n_series_with_mcd_burn']}/{summary['n_series_total']}"
+        f"Series con detección MCD64A1: "
+        f"{summary['n_series_with_mcd_burn']}/{summary['n_series_total']}"
     )
     if summary["lag_series_median_days"] is not None:
         print(f"Desfase mediano por serie:    {summary['lag_series_median_days']:+.2f} días")

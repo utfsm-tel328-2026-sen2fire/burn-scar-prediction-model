@@ -103,7 +103,7 @@ def group_gee_images_by_timestamp(img_list: list[dict]) -> list[dict]:
     for item in img_list:
         props = item.get("properties", {})
         time_start = props.get("system:time_start", 0)
-        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.timezone.utc)
+        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.UTC)
         date_tag = frame_dt.strftime("%Y%m%dT%H%M%S")
         groups.setdefault(date_tag, []).append(item)
         frame_times[date_tag] = frame_dt
@@ -132,7 +132,12 @@ def group_gee_images_by_timestamp(img_list: list[dict]) -> list[dict]:
     return canonical
 
 
-def download_gee_patch(image: ee.Image, region: ee.Geometry, crs: str, dimensions: tuple[int, int] = (64, 64)) -> np.ndarray:
+def download_gee_patch(
+    image: ee.Image,
+    region: ee.Geometry,
+    crs: str,
+    dimensions: tuple[int, int] = (64, 64),
+) -> np.ndarray:
     """Descarga una imagen de GEE como un array NumPy con dimensiones exactas."""
     url = image.getDownloadURL({
         "region": region,
@@ -344,7 +349,7 @@ def process_series_gee(
         img_id = item["id"]
         props = item.get("properties", {})
         time_start = props.get("system:time_start", 0)
-        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.timezone.utc)
+        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.UTC)
         date_tag = frame_dt.strftime("%Y%m%dT%H%M%S")
 
         frame_path = os.path.join(series_olci_dir, f"{date_tag}.npz")
@@ -379,9 +384,13 @@ def process_series_gee(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Paso 4: Descarga de Sentinel-3 OLCI vía GEE")
-    parser.add_argument("--manifest", default="data/cems_manifest_46.json", help="Ruta al manifiesto")
+    parser.add_argument(
+        "--manifest", default="data/cems_manifest_46.json", help="Ruta al manifiesto"
+    )
     parser.add_argument("--olci-dir", default="data/raw/s3_olci", help="Directorio destino OLCI")
-    parser.add_argument("--static-dir", default="data/raw/static", help="Directorio destino estáticas")
+    parser.add_argument(
+        "--static-dir", default="data/raw/static", help="Directorio destino estáticas"
+    )
     parser.add_argument("--limit", type=int, default=None, help="Límite de series (para testing)")
     args = parser.parse_args()
 
@@ -389,7 +398,7 @@ def main() -> int:
     env = {**load_dotenv_file(), **os.environ}
     init_earth_engine(env)
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    with open(args.manifest, encoding="utf-8") as f:
         manifest = json.load(f)
 
     series_list = manifest.get("series", [])
@@ -397,7 +406,7 @@ def main() -> int:
         series_list = series_list[:args.limit]
 
     print("=" * 72)
-    print(f"PASO 4: DESCARGA DE SENTINEL-3 OLCI (5 BANDAS) VÍA GEE")
+    print("PASO 4: DESCARGA DE SENTINEL-3 OLCI (5 BANDAS) VÍA GEE")
     print(f"Series a procesar: {len(series_list)}")
     print(f"Destino OLCI: {args.olci_dir}")
     print(f"Destino Estáticas (DEM/WorldCover): {args.static_dir}")

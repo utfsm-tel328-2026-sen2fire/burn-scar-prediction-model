@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import pytest
 import torch
-from pathlib import Path
+
 from burn_scar.models import load_tmb_s3, predict_burn_scar
 
 WEIGHTS_PATH = Path("models/tmb_s3/convlstm_segformer_prepost_subset/model.safetensors")

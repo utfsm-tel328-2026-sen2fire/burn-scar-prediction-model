@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import torch
+
 from burn_scar.models import load_tmb_s3, predict_burn_scar
 
 
@@ -33,7 +34,7 @@ def main() -> int:
     load_time = time.time() - t0
     print(f"Modelo cargado en {load_time:.2f} s. Todos los parámetros congelados.")
 
-    # Tensor de prueba: 1 muestra, secuencia de 7 frames temporales, 6 canales (5 OLCI + landcover), 64x64 px
+    # Tensor de prueba: 1 muestra, 7 frames temporales, 6 canales (5 OLCI + landcover), 64x64 px
     B, T, C, H, W = 1, 7, 6, 64, 64
     x = torch.randn(B, T, C, H, W, device=device)
 

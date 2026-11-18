@@ -1,20 +1,20 @@
 {
-  "generated_at": "2026-11-17T20:11:21Z",
+  "generated_at": "2026-11-18T00:28:41Z",
   "datasets": {
     "production": {
       "index": "data/processed/dataset_index.json",
       "available": true,
-      "file_sha256": "b866526ae8c6d5ab0c12277facae919bc0055b88fb1a37a3014494ca31fbdf55",
+      "file_sha256": "5973b3caeae5b8f4115afe42cab6aaebf1e67ccbe3205bf0de7af47d0acec1ca",
       "content_sha256": "34d562db30f59dc74fc875a6cefd2a79c61c6f474091ebaad92a8c5901faa75c",
-      "generator_version": "c2f8d282297d",
+      "generator_version": "24916444fd99",
       "schema_version": 2
     },
     "reference_cems": {
       "index": "data/processed_target_cems/dataset_index.json",
       "available": true,
-      "file_sha256": "4a1545a2cb680e5669f7e314ed740b99f1657f526558060d86c0ebb080134794",
+      "file_sha256": "7409f418d5076652b4ff8c776b8c898941a8dab249d02e32b4c7c945b2a28ce3",
       "content_sha256": "793121e1ac12ad6062c7c815639c402f1d93d2425a7d0e077beeea77420cc89c",
-      "generator_version": "c2f8d282297d",
+      "generator_version": "24916444fd99",
       "schema_version": 2
     }
   },

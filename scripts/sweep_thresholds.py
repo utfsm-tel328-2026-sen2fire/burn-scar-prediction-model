@@ -238,7 +238,10 @@ def prepare_index_path(index_path: str, dedup: bool) -> tuple[str, Path | None]:
     if removed == 0:
         return index_path, None
 
-    print(f"⚠ Aviso: deduplicadas {removed} entradas repetidas en {index_path} (solo en memoria temporal).")
+    print(
+        f"⚠ Aviso: deduplicadas {removed} entradas repetidas en {index_path} "
+        "(solo en memoria temporal)."
+    )
     payload["samples"] = deduped
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", prefix="dedup_index_", delete=False, encoding="utf-8"
@@ -307,7 +310,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     print("\n" + "-" * 74)
-    print(f"{'Umbral':>8} | {'F1':>7} | {'IoU':>7} | {'Precisión':>9} | {'Recall':>7} | {'Área Pred/Real':>14}")
+    print(
+        f"{'Umbral':>8} | {'F1':>7} | {'IoU':>7} | "
+        f"{'Precisión':>9} | {'Recall':>7} | {'Área Pred/Real':>14}"
+    )
     print("-" * 74)
     for th in thresholds:
         row = summary[th]

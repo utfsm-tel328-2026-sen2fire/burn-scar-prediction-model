@@ -1,9 +1,10 @@
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
-from pathlib import Path
+
 from burn_scar.dataset import (
     BurnScarDataset,
     compute_generator_version,
@@ -53,7 +54,9 @@ def test_burn_scar_dataset_loading():
 
 @pytest.mark.skipif(not INDEX_PATH.exists(), reason="Dataset index no generado")
 def test_cv_dataloaders_split():
-    train_loader, val_loader = get_cv_dataloaders(val_fold=0, batch_size=4, num_workers=0, index_path=INDEX_PATH)
+    train_loader, val_loader = get_cv_dataloaders(
+        val_fold=0, batch_size=4, num_workers=0, index_path=INDEX_PATH
+    )
 
     assert len(train_loader.dataset) > 0
     assert len(val_loader.dataset) > 0

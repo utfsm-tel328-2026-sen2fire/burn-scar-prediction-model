@@ -403,9 +403,9 @@ y que el generador no detectó. Medido sobre las **295 muestras** del dataset vi
 **Por eso el F1 de ensamblaje no puede interpretarse como propagación**: una etiqueta mucho
 más grande es más fácil de acertar.
 
-### El dataset vigente y por qué tiene 295 muestras
+### El dataset vigente y por qué tiene 296 muestras
 
-El dataset canónico se regeneró el 2026-11-16 con identidad de adquisición única, validación
+El dataset canónico se regeneró con identidad de adquisición única, validación
 de capas estáticas e inventario de cobertura. El manifiesto contiene **411 muestras
 candidatas únicas** tras colapsar tres productos CDSE duplicados.
 
@@ -414,21 +414,21 @@ candidatas únicas** tras colapsar tres productos CDSE duplicados.
 | `EMSR785_AOI01`: WorldCover completamente vacío en una descarga limpia | 48 |
 | Etiquetas CEMS rasterizadas no disponibles | 5 |
 | La ronda objetivo no existe en la etiqueta local | 19 |
-| Adquisición de `f` ausente o no utilizable | 44 |
-| **Total** | **116** |
-| **Muestras ensambladas** | **295** |
+| Adquisición de `f` ausente o no utilizable | 43 |
+| **Total** | **115** |
+| **Muestras ensambladas** | **296** |
 
-Todas las 295 entradas tienen `sample_id` y ruta de fichero únicos, repartidas en 40 series.
+Todas las 296 entradas tienen `sample_id` y ruta de fichero únicos, repartidas en 40 series.
 La serie excluida y el motivo quedan registrados en `inventory.excluded_series` del índice
 (`EMSR785_AOI01`, `reason: invalid_static_layers`, `stage: static_layers`). Composición por
-fold: 29 (f0), 15 (f1), 108 (f2), 95 (f3), 23 (f4) y **25 fuera de dominio** (fold -1, test).
+fold: 29 (f0), 15 (f1), 108 (f2), 96 (f3), 23 (f4) y **25 fuera de dominio** (fold -1, test).
 
-El soporte de horizontes es explícito y no se filtra: 171 muestras en `(0,1]`, 98 en `(1,3]`,
-25 en `(3,7]`, 1 en `(7,14]` y ninguna en `(14,+inf)`. La mediana es 0,897 días y el máximo
+El soporte de horizontes es explícito y no se filtra: 171 muestras en `(0,1]`, 99 en `(1,3]`,
+25 en `(3,7]`, 1 en `(7,14]` y ninguna en `(14,+inf)`. La mediana es 0,903 días y el máximo
 observado 7,024. **No hay horizonte máximo en el dataset ni en la evaluación**: `h` se
 conserva continuo y las bandas son solo diagnóstico, de modo que ninguna banda filtra el
 entrenamiento ni las métricas globales. **Ninguna muestra representa un arranque en frío**:
-las 295 tienen cicatriz no vacía y el índice declara `cold_start_represented: false`.
+las 296 tienen cicatriz no vacía y el índice declara `cold_start_represented: false`.
 
 ### Protocolo de conteos y procedencia
 
@@ -561,8 +561,8 @@ artefactos: `--write`.
 
 | Artefacto | Huella de contenido (SHA-256) |
 |---|---|
-| Índice de producción (`data/processed/dataset_index.json`) | `0a8981e4ee55dc7ddee5bc4146640024c1f63ffbb0bf6cb739557296cd5861b2` |
-| Índice de referencia (`data/processed_target_cems/dataset_index.json`) | `aa179975bbc9a2b9952fa1ff103f02ab9f0e8185b098e6abbdc26dbdc15221fd` |
+| Índice de producción (`data/processed/dataset_index.json`) | `34d562db30f59dc74fc875a6cefd2a79c61c6f474091ebaad92a8c5901faa75c` |
+| Índice de referencia (`data/processed_target_cems/dataset_index.json`) | `793121e1ac12ad6062c7c815639c402f1d93d2425a7d0e077beeea77420cc89c` |
 
 La **huella de contenido** no depende de la cabecera temporal del índice: dos regeneraciones
 del mismo dataset producen la misma huella aunque el fichero cambie en `generated_at`. La

@@ -49,7 +49,7 @@ def compute_mcd_target_and_mask(
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Construye `(target, mask)` a partir de `burn_ordinal` (64, 64) y `qa` (64, 64):
-    - `target` float32 en {0.0, 1.0}: 1.0 si `(burn_ordinal + burndate_shift_days) ∈ (f_ord, f_ord + h]`.
+    - `target` float32 en {0.0, 1.0}: 1.0 si `(burn_ordinal + shift) ∈ (f_ord, f_ord + h]`.
     - `mask` uint8: `1` válido, `255` ignorar si `burn_ordinal < 0`, `bit 0 de QA == 0` (agua)
       o `bits 5..7 de QA != 0` (observaciones demasiado espaciadas / sin mapeo fiable).
     """
@@ -98,7 +98,7 @@ def main() -> int:
     print(f"Dispositivo TMB-S3: {device} | Shift R19: {args.burndate_shift_days:+d} d")
     print("=" * 72)
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    with open(args.manifest, encoding="utf-8") as f:
         manifest = json.load(f)
 
     series_list = manifest.get("series", [])
@@ -233,7 +233,7 @@ def main() -> int:
                     horizon_days=float(h),
                     burndate_shift_days=args.burndate_shift_days,
                 )
-                # Descontar también cualquier señal ya presente en scar_f si se desea mantener D9 consistente
+                # Descontar señal ya presente en scar_f si se desea mantener D9 consistente
                 # manteniendo la supervisión de crecimiento futuro en (f, f+h]
                 if not np.any(mask == 1):
                     continue
@@ -267,7 +267,10 @@ def main() -> int:
                 )
                 series_samples += 1
 
-        print(f"[{idx:>2}/{len(series_list)}] {sid:<20} -> {series_samples} muestras (Fold {fold_id})")
+        print(
+            f"[{idx:>2}/{len(series_list)}] {sid:<20} -> "
+            f"{series_samples} muestras (Fold {fold_id})"
+        )
 
     os.makedirs(os.path.dirname(args.index_out) or ".", exist_ok=True)
     with open(args.index_out, "w", encoding="utf-8") as f:
@@ -289,7 +292,10 @@ def main() -> int:
         )
 
     print("=" * 72)
-    print(f"Total muestras MCD64A1: {len(sample_index)} | Índice: {args.index_out} ({time.time() - t0:.1f} s)")
+    print(
+        f"Total muestras MCD64A1: {len(sample_index)} | "
+        f"Índice: {args.index_out} ({time.time() - t0:.1f} s)"
+    )
     print("=" * 72)
     return 0
 

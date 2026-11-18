@@ -4,7 +4,7 @@ Paso 5: Ensamblaje del Dataset de Propagación de Cicatrices en PyTorch.
 
 1. Precalcula el canal de cicatriz conocida `scar` usando TMB-S3 en GPU.
 2. Agrupa las 41 series en 5 folds de validación cruzada geográfica sin fuga (D8, D14).
-3. Empaqueta las muestras alineadas (X: OLCI 7 frames + estáticas + scar + h, Y: nuevo quemado CEMS).
+3. Empaqueta muestras alineadas (OLCI 7 frames + estáticas + scar + h, Y: nuevo quemado).
 
 Salida:
     data/processed/dataset_index.json
@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np
 import torch
+
 from burn_scar.dataset import (
     MASK_EVALUABLE,
     MASK_IGNORED,
@@ -105,7 +106,7 @@ def _reference_growth(
 
 def assign_geographic_folds(series_list: list[dict]) -> dict[str, int]:
     """Asigna cada serie a uno de los 5 folds geográficos (D8, D14, BL6)."""
-    # 1. Agrupar series por código de activación EMSR para evitar que distintos AOIs del mismo fuego se separen
+    # 1. Agrupar por código EMSR para no separar AOIs del mismo incendio
     by_code: dict[str, list[dict]] = {}
     for s in series_list:
         if s.get("geo_mediterranean", True):
@@ -123,7 +124,7 @@ def assign_geographic_folds(series_list: list[dict]) -> dict[str, int]:
         for s in by_code[code]:
             series_fold_map[s["series_id"]] = fold_idx
 
-    # 3. Series de ultramar / atlánticas quedan como test complementario fuera de dominio (fold -1, BL6)
+    # 3. Series de ultramar / atlánticas quedan fuera de dominio (fold -1, BL6)
     for s in series_list:
         if not s.get("geo_mediterranean", True):
             series_fold_map[s["series_id"]] = -1
@@ -133,7 +134,9 @@ def assign_geographic_folds(series_list: list[dict]) -> dict[str, int]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Paso 5: Ensamblaje del Dataset PyTorch")
-    parser.add_argument("--labels-manifest", default="data/processed/cems_labels/manifest_rasterized.json")
+    parser.add_argument(
+        "--labels-manifest", default="data/processed/cems_labels/manifest_rasterized.json"
+    )
     parser.add_argument("--cems-manifest", default="data/cems_manifest_46.json")
     parser.add_argument("--samples-out", default="data/processed/samples")
     parser.add_argument("--index-out", default="data/processed/dataset_index.json")
@@ -157,10 +160,10 @@ def main() -> int:
         print(f"GPU: {torch.cuda.get_device_name(0)}")
     print("=" * 72)
 
-    with open(args.labels_manifest, "r", encoding="utf-8") as f:
+    with open(args.labels_manifest, encoding="utf-8") as f:
         labels_manifest = json.load(f)
 
-    with open(args.cems_manifest, "r", encoding="utf-8") as f:
+    with open(args.cems_manifest, encoding="utf-8") as f:
         cems_manifest = json.load(f)
 
     # 1. Asignar los 5 folds geográficos
@@ -170,7 +173,7 @@ def main() -> int:
     print("\nAsignación de Folds Geográficos (CV 5 Folds, D14):")
     fold_counts = {f: 0 for f in range(5)}
     fold_counts[-1] = 0
-    for sid, f in series_fold_map.items():
+    for _sid, f in series_fold_map.items():
         fold_counts[f] += 1
     for f in range(5):
         print(f"   - Fold {f}: {fold_counts[f]} series mediterráneas")
@@ -356,7 +359,7 @@ def main() -> int:
             olci_clean = np.where(olci_valid_mask, olci_tensor, np.nan)
 
             # 3. Inferencia de TMB-S3 para obtener la cicatriz actual scar(f)
-            # TMB-S3 espera bandas en orden [Oa21, Oa17, Oa08, Oa06, Oa04] (config.yaml: [20, 16, 7, 5, 3])
+            # TMB-S3 espera bandas [Oa21, Oa17, Oa08, Oa06, Oa04] (config: [20, 16, 7, 5, 3])
             # normalizadas (z-score por banda sobre píxeles válidos) + landcover en [0..1]
             olci_tmb_order = olci_clean[:, [4, 3, 2, 1, 0], :, :]
             olci_tmb_norm = np.zeros_like(olci_tmb_order, dtype=np.float32)
@@ -378,7 +381,7 @@ def main() -> int:
 
             tmb_tensor = torch.from_numpy(tmb_in_np).unsqueeze(0).to(device)
             with torch.no_grad():
-                scar_probs = predict_burn_scar(tmb_model, tmb_tensor).cpu().numpy()[0]  # (7, 64, 64)
+                scar_probs = predict_burn_scar(tmb_model, tmb_tensor).cpu().numpy()[0]
 
             # La cicatriz de entrada es la del frame actual f, que por
             # construcción es el último frame de la ventana temporal.
@@ -400,7 +403,9 @@ def main() -> int:
 
             # 4. Target de propagación: lo NUEVO quemado en (f, f+h] (D9)
             # Target = clip(poligono(r+1) - scar_TMB3(f), 0, 1)
-            target_delta = np.clip(gt_target_burnt.astype(np.float32) - scar_f.astype(np.float32), 0.0, 1.0)
+            target_delta = np.clip(
+                gt_target_burnt.astype(np.float32) - scar_f.astype(np.float32), 0.0, 1.0
+            )
 
             # 4b. Target de referencia: crecimiento real entre la última ronda CEMS
             # conocida en el instante f y la ronda objetivo, con la validez común.
@@ -470,7 +475,10 @@ def main() -> int:
             series_samples_count += 1
             total_samples += 1
 
-        print(f"[{idx:>2}/{len(series_meta_list)}] {sid:<18} -> {series_samples_count} muestras ensambladas (Fold {series_fold_map.get(sid, 0)})")
+        print(
+            f"[{idx:>2}/{len(series_meta_list)}] {sid:<18} -> "
+            f"{series_samples_count} muestras ensambladas (Fold {series_fold_map.get(sid, 0)})"
+        )
 
     # Guardar índice final del dataset
     validate_unique_sample_index(sample_index)

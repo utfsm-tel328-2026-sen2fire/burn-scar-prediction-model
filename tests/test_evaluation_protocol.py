@@ -8,12 +8,11 @@ from pathlib import Path
 
 import pytest
 import torch
+from _fixtures import build_synthetic_dataset
 
 from burn_scar.baselines import BaselineB0Persistence
 from burn_scar.dataset import BurnScarDataset
 from burn_scar.quality import describe_evaluated_set
-
-from _fixtures import build_synthetic_dataset
 
 
 def _load_script(name: str, filename: str):

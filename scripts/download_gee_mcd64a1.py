@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Descarga incremental y reanudable de parches 64x64 a 300 m para eventos MCD64A1:
-- MCD64A1 (`BurnDate`, `Uncertainty`, `QA` + `burn_ordinal`) en `data/raw_mcd/mcd64a1/{series_id}/mcd64a1_layers.npz`
+- MCD64A1 (`BurnDate`, `Uncertainty`, `QA` + `burn_ordinal`) en
+  `data/raw_mcd/mcd64a1/{series_id}/mcd64a1_layers.npz`
 - Capas estáticas (`DEM`, `WorldCover`) en `data/raw_mcd/static/{series_id}/static_layers.npz`
 - Frames Sentinel-3 OLCI (5 bandas, conservando nubes/humo reales y descartando solo
   bordes de swath / adquisiciones nocturnas con `MAX_NODATA_FRAC > 0.20`) en
@@ -10,12 +11,11 @@ Descarga incremental y reanudable de parches 64x64 a 300 m para eventos MCD64A1:
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import datetime as dt
 import json
-import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -88,7 +88,7 @@ def process_mcd_event_gee(
         wc_arr = download_patch_with_retry(wc_img, region, crs_str)[0].astype(np.uint8)
         np.savez_compressed(static_file, dem=dem_arr, worldcover=wc_arr)
 
-    # 2. Descargar parche MCD64A1 (BurnDate, Uncertainty, QA) remuestreado por nearest a 64x64 (300 m)
+    # 2. Descargar parche MCD64A1 (BurnDate, Uncertainty, QA) a 64x64 (300 m, nearest)
     mcd_dir = raw_root / "mcd64a1" / sid
     mcd_dir.mkdir(parents=True, exist_ok=True)
     mcd_file = mcd_dir / "mcd64a1_layers.npz"
@@ -116,7 +116,7 @@ def process_mcd_event_gee(
             img_id = item["id"]
             props = item.get("properties", {})
             t_ms = props.get("system:time_start", 0)
-            img_year = dt.datetime.fromtimestamp(t_ms / 1000.0, tz=dt.timezone.utc).year
+            img_year = dt.datetime.fromtimestamp(t_ms / 1000.0, tz=dt.UTC).year
             arr = download_patch_with_retry(ee.Image(img_id).select(MCD_BANDS), region, crs_str)
             doy_m = arr[0].astype(np.int16)
             unc_m = np.clip(arr[1], 0, 255).astype(np.uint8)
@@ -167,7 +167,7 @@ def process_mcd_event_gee(
         img_id = item["id"]
         props = item.get("properties", {})
         time_start = props.get("system:time_start", 0)
-        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.timezone.utc)
+        frame_dt = dt.datetime.fromtimestamp(time_start / 1000.0, tz=dt.UTC)
         date_tag = frame_dt.strftime("%Y%m%dT%H%M%S")
 
         frame_path = olci_dir / f"{date_tag}.npz"
@@ -176,7 +176,9 @@ def process_mcd_event_gee(
             continue
 
         try:
-            bands_arr = download_patch_with_retry(ee.Image(img_id).select(S3_BANDS), region, crs_str)
+            bands_arr = download_patch_with_retry(
+                ee.Image(img_id).select(S3_BANDS), region, crs_str
+            )
             valid = (bands_arr > 0) & (bands_arr < 32768)
             fill_frac = float((~valid).mean())
             has_signal = bool(valid.any()) and float(bands_arr[valid].max()) > 0.0
@@ -227,7 +229,7 @@ def main() -> int:
 
     ee.Initialize()
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    with open(args.manifest, encoding="utf-8") as f:
         manifest = json.load(f)
 
     series_list = manifest.get("series", [])
@@ -237,7 +239,10 @@ def main() -> int:
     workers = max(1, int(args.workers))
     print("=" * 72, flush=True)
     print("DESCARGA DE PARCHES MCD64A1 + OLCI + ESTÁTICAS (64x64 a 300 m)", flush=True)
-    print(f"Eventos: {len(series_list)} | Workers: {workers} | Destino: {args.raw_root}", flush=True)
+    print(
+        f"Eventos: {len(series_list)} | Workers: {workers} | Destino: {args.raw_root}",
+        flush=True,
+    )
     print("=" * 72, flush=True)
 
     t0 = time.time()
@@ -284,7 +289,8 @@ def main() -> int:
 
     print("=" * 72, flush=True)
     print(
-        f"Completado en {time.time() - t0:.1f} s | Frames OLCI guardados: {total_saved} | Errores: {errors}",
+        f"Completado en {time.time() - t0:.1f} s | "
+        f"Frames OLCI guardados: {total_saved} | Errores: {errors}",
         flush=True,
     )
     print("=" * 72, flush=True)

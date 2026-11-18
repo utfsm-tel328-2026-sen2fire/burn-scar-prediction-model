@@ -17,7 +17,7 @@ def test_sweep_samples_removes_low_confidence_false_positives():
     target = np.zeros((8, 8), dtype=np.float32)
     target[0:2, 0:2] = 1.0  # 4 píxeles quemados reales
 
-    # Verdaderos positivos con alta confianza (0.85) + muchos falsos positivos con baja confianza (0.20)
+    # Verdaderos positivos con confianza alta (0.85) y falsos positivos con confianza baja (0.20)
     probs = np.zeros((8, 8), dtype=np.float32)
     probs[0:2, 0:2] = 0.85
     probs[4:8, 4:8] = 0.20  # 16 píxeles FP con baja confianza

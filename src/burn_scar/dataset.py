@@ -9,13 +9,13 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
-import os
 import warnings
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
+
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 DEFAULT_INDEX_PATH = Path("data/processed/dataset_index.json")
 
@@ -250,7 +250,7 @@ def build_temporal_window(
 def is_chronological(keys: Sequence[str]) -> bool:
     """Indica si una secuencia de claves de frame está ordenada en el tiempo."""
     instants = [frame_key_to_datetime(k) for k in keys]
-    return all(a <= b for a, b in zip(instants, instants[1:]))
+    return all(a <= b for a, b in zip(instants, instants[1:], strict=False))
 
 
 def resolve_sample_window(
@@ -282,10 +282,10 @@ class BurnScarDataset(Dataset):
         x_olci:       (7, 5, 64, 64) float32 (secuencia de 7 frames con 5 bandas espectrales)
         x_dem:        (1, 64, 64)    float32 (elevación normalizada)
         x_worldcover: (1, 64, 64)    float32 (clases de cobertura de suelo normalizadas)
-        x_scar:       (1, 64, 64)    float32 (cicatriz conocida producida por TMB-S3 en el frame actual f)
+        x_scar:       (1, 64, 64)    float32 (cicatriz TMB-S3 en el frame actual f)
         horizon_days: (1,)           float32 (horizonte h en días hacia el objetivo)
         target:       (1, 64, 64)    float32 (lo NUEVO quemado en [f, f+h], valores en [0..1])
-        mask:         (1, 64, 64)    uint8   (1 = píxel válido observado, 255 = ignorar/no analizado)
+        mask:         (1, 64, 64)    uint8   (1 = píxel válido, 255 = ignorado/no analizado)
         target_cems: (1, 64, 64)    float32 (crecimiento real entre rondas CEMS; referencia)
         mask_cems:   (1, 64, 64)    uint8   (validez común a las dos rondas; misma codificación)
         has_reference: (1,)          float32 (1 si la muestra trae target de referencia)
@@ -306,7 +306,7 @@ class BurnScarDataset(Dataset):
         if not index_path.exists():
             raise FileNotFoundError(f"No se encontró el índice del dataset en: {index_path}")
 
-        with open(index_path, "r", encoding="utf-8") as f:
+        with open(index_path, encoding="utf-8") as f:
             index_data = json.load(f)
 
         _warn_if_dataset_is_stale(index_data)

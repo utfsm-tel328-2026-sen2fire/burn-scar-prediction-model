@@ -21,7 +21,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-def download_file(url: str, dest_path: str, retries: int = 4, timeout: int = 30) -> tuple[str, bool, str]:
+def download_file(
+    url: str, dest_path: str, retries: int = 4, timeout: int = 30
+) -> tuple[str, bool, str]:
     """Descarga un archivo con reintentos y validación de JSON."""
     if os.path.exists(dest_path) and os.path.getsize(dest_path) > 10:
         return dest_path, True, "cached"
@@ -74,7 +76,9 @@ def extract_layer_key(layer_name: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Paso 1: Descarga de capas vectoriales CEMS")
-    parser.add_argument("--manifest", default="data/cems_manifest_46.json", help="Ruta al manifiesto")
+    parser.add_argument(
+        "--manifest", default="data/cems_manifest_46.json", help="Ruta al manifiesto"
+    )
     parser.add_argument("--output-dir", default="data/raw/cems", help="Directorio de destino")
     parser.add_argument("--workers", type=int, default=8, help="Número de hilos concurrentes")
     parser.add_argument("--limit", type=int, default=None, help="Límite de series (para testing)")
@@ -84,7 +88,7 @@ def main() -> int:
         print(f"Error: {args.manifest} no existe.", file=sys.stderr)
         return 1
 
-    with open(args.manifest, "r", encoding="utf-8") as f:
+    with open(args.manifest, encoding="utf-8") as f:
         manifest = json.load(f)
 
     series_list = manifest.get("series", [])
@@ -138,8 +142,11 @@ def main() -> int:
 
             if idx % 50 == 0 or idx == len(tasks):
                 elapsed = time.time() - start_time
-                print(f"Progreso: {idx:>3}/{len(tasks)} archivos procesados "
-                      f"({downloaded} descargados, {cached} en caché, {failed} fallidos) - {elapsed:.1f}s")
+                print(
+                    f"Progreso: {idx:>3}/{len(tasks)} archivos procesados "
+                    f"({downloaded} descargados, {cached} en caché, {failed} fallidos) "
+                    f"- {elapsed:.1f}s"
+                )
 
     elapsed_total = time.time() - start_time
     print("\n" + "=" * 72)

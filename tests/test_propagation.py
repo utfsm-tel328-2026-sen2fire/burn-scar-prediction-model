@@ -91,7 +91,7 @@ def test_masked_loss_derives_pos_weight_from_batch_imbalance() -> None:
 
 
 def test_tversky_and_max_pos_weight_penalize_false_positives_more() -> None:
-    """Con tversky_alpha > tversky_beta se penalizan más los falsos positivos que los falsos negativos."""
+    """Con alpha > beta se penalizan más los falsos positivos que los falsos negativos."""
     mask = torch.ones(1, 1, 10, 10, dtype=torch.uint8)
     target = torch.zeros(1, 1, 10, 10)
     target[:, :, 0:2, 0:2] = 1.0  # 4 píxeles reales
