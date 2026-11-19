@@ -52,8 +52,9 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Pendientes de evaluación P1-P8 | `decisiones.md` §1.2 |
 | Decisiones que bloquean la descarga BL1-BL7 | `decisiones.md` §1.3 |
 | Alternativas descartadas | `decisiones.md` §1.4 |
+| Decisiones de ensamblaje A1-A13 | `decisiones.md` §1.5 |
 | Riesgos R1-R22 | `decisiones.md` §2 |
-| Baselines B0/B1 + trivial y criterio de aceptación | `dataset.md` §9 |
+| Baselines BASE-0/BASE-1 + trivial y criterio de aceptación | `dataset.md` §9 |
 | Protocolo de evaluación (métrica, incertidumbre, binarización, estratos) | `dataset.md` §10 |
 | Entradas del modelo en operación | `operacion.md` §1 |
 | Latencias por fuente | `datos.md` §1 y §6 |
@@ -67,6 +68,29 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 
 > Esta tabla **no repite los valores**: solo dice dónde vive cada uno. Los valores están en
 > el fichero canónico; si un número cambia, cambia ahí y en ningún otro sitio.
+
+## Mapa de identificadores
+
+Cada cosa que se numera en la documentación tiene **un prefijo propio**, para que un
+código nunca pueda significar dos cosas. `B1` es siempre una decisión y `BASE-1` es
+siempre un baseline.
+
+| Prefijo | Qué identifica | Rango | Dónde se declara |
+|---|---|---|---|
+| `D` | Reglas de construcción del dataset | D1–D22 | `dataset.md` §7 |
+| `R` | Riesgos y trampas | R1–R22 | `decisiones.md` §2 |
+| `B` | Decisiones de diseño cerradas | B1–B13 | `decisiones.md` §1.1 |
+| `P` | Pendientes de evaluación | P1–P8 | `decisiones.md` §1.2 |
+| `BL` | Decisiones que bloquean la descarga | BL1–BL7 | `decisiones.md` §1.3 |
+| `A` | Decisiones de ensamblaje del dataset | A1–A13 | `decisiones.md` §1.5 |
+| `BASE` | Baselines de referencia | BASE-0–BASE-2 | `dataset.md` §9 |
+| `M` | Modelos del pipeline (preentrenamiento y ajuste) | M-A, M-B | `dataset.md` §8 |
+
+> **Ojo con `B`.** Las decisiones de diseño se numeran `B1`–`B13` y los baselines
+> `BASE-0`–`BASE-2`: son series distintas y no comparten ningún token. Antes los
+> baselines se numeraban con el mismo prefijo que las decisiones, así que "B1" podía
+> significar dos cosas distintas en el mismo repo; por eso los baselines llevan ahora
+> prefijo propio.
 
 ## Contrato con el código y con las specs
 

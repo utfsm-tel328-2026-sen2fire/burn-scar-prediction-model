@@ -27,7 +27,7 @@ son siglas o nombres en inglés.
 | **TOA** | *Top-of-atmosphere*. Reflectancia/radiancia medida en el sensor, sin corregir a superficie |
 | **Regla OR** | Se marca un píxel como quemado si **cualquier** píxel de 10 m dentro lo está. Infla el área |
 | **Target (objetivo)** | Lo que hay que acertar: el mapa de probabilidad de quema en el horizonte pedido |
-| **Baseline (modelo de referencia)** | B0 y B1, más el trivial "todo quemado": referencias sin aprendizaje automático contra las que se compara el nuestro |
+| **Baseline (modelo de referencia)** | BASE-0 y BASE-1, más el trivial "todo quemado": referencias sin aprendizaje automático contra las que se compara el nuestro. **No confundir con las decisiones de diseño, que se numeran B1-B13** (`decisiones.md` §1.1) |
 | **Ground truth (GT)** | La "verdad" contra la que se mide el modelo |
 | **Split** | Cómo se reparte el dataset en train / validación / test |
 | **Fuga espacial** | Que el mismo incendio (o su vecino) aparezca en train y test. Infla los resultados |
@@ -177,7 +177,7 @@ reproducible:**
 2. **CEMS no puede darte esa capacidad**: sus rondas son irregulares, así que sola te da
    los horizontes que el analista eligió. MCD64A1 sí: en el preentrenamiento se muestrean
    *h* de una rejilla amplia `{1, 2, 3, 5, 7, 10, 14}` días, lo que da 7 muestras por frame.
-3. **Hace comparables los baselines**: B1 (dilatación radial) se define naturalmente para
+3. **Hace comparables los baselines**: BASE-1 (dilatación radial) se define naturalmente para
    un *h* dado, así que la comparación es directa.
 
 Los horizontes reales de CEMS pueden quedar fuera de la rejilla (una ronda muy tardía);
@@ -364,7 +364,7 @@ especificación que se implementa y la que se revisa al auditar una etiqueta.
 | **D7** | **Sensor y `observed_time` de cada ronda**, siempre, en los metadatos del índice | Permite estratificar (R14) y auditar cualquier muestra |
 | **D8** | **Split por cluster geográfico**, nunca aleatorio | Fuga espacial (R5) |
 | **D9** | **El target se mide desde *f*, no desde la ronda anterior** | `polígono(r+1) − scar_TMB3(f)`, no `polígono(r+1) − polígono(r)`. Medir desde la ronda cuenta quemado ya visible (§2) |
-| **D10** | **El horizonte *h* es una entrada del modelo** | Sin él no se puede derivar el perímetro final "agregando horizontes", ni comparar limpiamente con B1 (§2) |
+| **D10** | **El horizonte *h* es una entrada del modelo** | Sin él no se puede derivar el perímetro final "agregando horizontes", ni comparar limpiamente con BASE-1 (§2) |
 | **D11** | **El preentrenamiento excluye los eventos que se solapan en espacio y tiempo con test y val** | Si no, la afirmación de generalización espacial no es verificable (R20) |
 | **D12** | **Etiquetas de preentrenamiento a 300 m por *nearest*** | La arquitectura y la resolución no cambian entre fases; solo el target del preentrenamiento sale en bloques de 500 m |
 | **D13** | **Del dataset CEMS se excluyen los 50 eventos en el `train`/`val` de TMB-S3** | En ellos la cicatriz de entrada es el perímetro CEMS memorizado, y el target significa "crecimiento entre rondas" en vez de "crecimiento después de *f*". Quedan 46 series (decisiones.md §3, R18) |
@@ -481,19 +481,24 @@ contra CEMS con la misma solidez, y no tiene la cobertura temporal de TMB-S3.
 
 ## 9. Baselines (el termómetro del proyecto)
 
+> **Qué son estos códigos.** `BASE-0`–`BASE-2` son los **baselines**, los modelos de
+> referencia contra los que se compara el nuestro. Las decisiones de diseño se numeran
+> `B1`–`B13` (`decisiones.md` §1.1): series distintas, sin ningún token en común. El mapa
+> completo de prefijos está en [`docs/README.md`](README.md).
+
 | # | Baseline | Idea | Por qué importa | Estado |
 |---|---|---|---|---|
-| **B0** | Persistencia | El fuego no crece | Suelo trivial | implementado |
-| **B1** | Dilatación radial | El frente avanza isotropemente | Geometría pura | implementado |
+| **BASE-0** | Persistencia | El fuego no crece | Suelo trivial | implementado |
+| **BASE-1** | Dilatación radial | El frente avanza isotropemente | Geometría pura | implementado |
 | — | Todo quemado | Predice quemado en todo el mapa | La **escala mínima** de cada etiqueta: por debajo, no se ha aprendido nada | implementado |
-| **B2** | Advección por viento | El frente avanza en la dirección del viento | Física sin ML | **fuera de alcance** (P2) |
+| **BASE-2** | Advección por viento | El frente avanza en la dirección del viento | Física sin ML | **fuera de alcance** (P2) |
 
-> **Criterio de aceptación: el modelo debe superar a B1 (dilatación radial) y al trivial
+> **Criterio de aceptación: el modelo debe superar a BASE-1 (dilatación radial) y al trivial
 > "todo quemado"**, medidos al mismo umbral y sobre el mismo subconjunto evaluable. Si una
 > red no bate ni "dilata el frente isométricamente" ni "quema todo", no está aprendiendo
 > propagación: está aprendiendo a rellenar ruido.
 >
-> **B2 queda fuera del alcance del proyecto**: no se implementa ni el canal meteorológico
+> **BASE-2 queda fuera del alcance del proyecto**: no se implementa ni el canal meteorológico
 > (ERA5/GFS) que necesitaría. La decisión y su motivo están en
 > [`decisiones.md`](decisiones.md) §1.2 (P2).
 
@@ -514,7 +519,7 @@ evaluación.
 | **Máscara** | Solo píxeles válidos: `valido(r+1)` (§7 D3). `valido(r)` no interviene: con D9 el perímetro de la ronda anterior ya no entra en el target |
 | **Estratificación obligatoria** | **Pendiente de implementar.** El índice guarda el sensor de cada ronda (`sensor_from`, `sensor_to`, `sensor_changed`) y la marca de control de TMB-S3 (`in_tmb_test`), pero **ningún script de evaluación los usa todavía**: hoy no se publica el subconjunto "limpio" ni el estrato de TMB-S3. Es una deuda conocida (decisiones.md §2 R14) |
 | **Estrato TMB-S3** | **Pendiente de implementar**: las series del `test` de TMB-S3 están marcadas en el manifiesto (`in_tmb_test`), pero todavía no se reportan aparte. Miden si TMB-S3 generaliza de verdad (decisiones.md §3) |
-| **Comparación** | Todos los baselines (B0, B1 y el trivial "todo quemado") se evalúan **con el mismo protocolo y los mismos folds** que el modelo, y se reportan los dos modelos (M-A sin ajuste, M-B con ajuste) |
+| **Comparación** | Todos los baselines (BASE-0, BASE-1 y el trivial "todo quemado") se evalúan **con el mismo protocolo y los mismos folds** que el modelo, y se reportan los dos modelos (M-A sin ajuste, M-B con ajuste) |
 | **Denominadores** | La evaluación informa por separado de **entradas, muestras únicas, ficheros únicos, series y muestras evaluables**, y usa un único descriptivo (`evaluated_set`) para el modelo y para los baselines. Un índice con `sample_id` o rutas repetidos se rechaza antes de calcular métricas |
 | **Bandas de horizonte** | Las métricas se reportan también por banda `(0,1]`, `(1,3]`, `(3,7]`, `(7,14]` y `(14,+inf)`, **solo como diagnóstico**. Las métricas globales se calculan sobre **todas** las muestras únicas: ninguna banda filtra el entrenamiento ni la evaluación, y no hay horizonte máximo |
 | **Arranque en frío** | El estrato de arranque en frío se reporta **con su estado**: si el conjunto no contiene ninguna muestra con `x_scar` vacío, se declara "no representado" y **no se publica un desempeño** para ese escenario |
@@ -523,7 +528,7 @@ evaluación.
 > **Por qué el promedio por evento y no por píxel.** Agregar por píxel hace que un solo AOI
 > enorme (EMSR837 tiene 111.489 píxeles, 27 veces la mediana) domine la métrica. Con pocas
 > series evaluadas, además, cualquier diferencia pequeña está dentro del ruido: sin una
-> medida de dispersión, "el modelo bate a B1" no es una afirmación verificable.
+> medida de dispersión, "el modelo bate a BASE-1" no es una afirmación verificable.
 
 ---
 

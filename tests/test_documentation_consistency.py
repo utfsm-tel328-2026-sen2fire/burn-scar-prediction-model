@@ -184,6 +184,110 @@ def _documentos() -> list[Path]:
     return [README, *sorted(DOCS_DIR.glob("*.md"))]
 
 
+def _sin_seccion(texto: str, numero: str) -> str:
+    """Devuelve el documento sin la sección cuyo encabezado empieza por `numero`."""
+    patron = re.compile(rf"^#{{2,3}} {re.escape(numero)}\.?\s", re.M)
+    cabecera = patron.search(texto)
+    assert cabecera, f"no se encuentra la sección {numero}"
+    siguiente = re.compile(r"^#{2,3} ", re.M).search(texto, cabecera.end())
+    fin = siguiente.start() if siguiente else len(texto)
+    return texto[: cabecera.start()] + texto[fin:]
+
+
+def test_el_estado_de_los_baselines_coincide_con_el_codigo():
+    """La documentación no puede afirmar que un baseline está implementado si no lo está."""
+    source = Path("src/burn_scar/baselines.py")
+    if not source.exists():
+        pytest.skip("src/burn_scar/baselines.py no encontrado")
+    codigo = source.read_text(encoding="utf-8")
+    texto = DATASET_DOC.read_text(encoding="utf-8")
+
+    # ¿Está implementado el baseline de advección por viento?
+    b2_implementado = "Advection" in codigo or "advection" in codigo
+
+    # El estado que declara la tabla de baselines de dataset.md §9, en SU fila.
+    fila = re.search(r"^\|\s*\*{0,2}BASE-2\*{0,2}\s*\|[^\n]*$", texto, re.M)
+    assert fila, "dataset.md §9 no declara la fila de BASE-2 (advección por viento)"
+    celdas = [c.strip() for c in fila.group(0).strip("|").split("|")]
+    estado = _normalized(celdas[-1]).lower()
+
+    if b2_implementado:
+        assert "implementado" in estado and "fuera de alcance" not in estado, (
+            f"BASE-2 está implementado en el código pero la documentación dice: {estado!r}"
+        )
+    else:
+        assert "fuera de alcance" in estado or "pendiente" in estado, (
+            f"BASE-2 no está implementado, así que la fila debe decirlo; dice: {estado!r}"
+        )
+
+
+def _codigos_b_sueltos(texto: str) -> list[str]:
+    """Tokens B<digito> que no forman parte de una referencia a un rango (B1-B13)."""
+    sueltos = []
+    for match in re.finditer(r"\bB\d+\b", texto):
+        if re.match(r"\W{0,3}[-–—]\W{0,3}B\d+\b", texto[match.end() :]):
+            continue  # "B1-B13": este token es el inicio del rango
+        if re.search(r"\bB\d+\W{0,3}[-–—]\W{0,3}$", texto[: match.start()]):
+            continue  # "B1-B13": este token es el final del rango
+        sueltos.append(match.group(0))
+    return sueltos
+
+
+def test_los_baselines_no_comparten_prefijo_con_las_decisiones():
+    """
+    B1-B13 son decisiones de diseño; BASE-0..BASE-2 son los baselines.
+
+    El token "B1" no puede significar dos cosas distintas en el mismo repo. Por eso
+    los baselines llevan prefijo propio y los códigos B<digito> quedan reservados
+    a la serie de decisiones.
+    """
+    if not (DECISIONES.exists() and DATASET_DOC.exists()):
+        pytest.skip("documentación no encontrada")
+
+    # 1) Las dos series, tal y como se declaran.
+    decisiones = set(
+        re.findall(r"^\|\s*\*{0,2}(B\d+)\*{0,2}\s*\|", DECISIONES.read_text(encoding="utf-8"), re.M)
+    )
+    baselines = set(
+        re.findall(r"^\|\s*\*{0,2}(BASE-\d+)\*{0,2}\s*\|", DATASET_DOC.read_text(encoding="utf-8"), re.M)
+    )
+    assert decisiones, "no se encuentra la serie de decisiones B* en decisiones.md §1.1"
+    assert baselines == {"BASE-0", "BASE-1", "BASE-2"}, (
+        f"la serie de baselines debería ser BASE-0..BASE-2; es: {sorted(baselines)}"
+    )
+    assert not (decisiones & baselines), (
+        f"hay identificadores en las dos series: {sorted(decisiones & baselines)}"
+    )
+
+    # 2) En las tablas, un código B<digito> suelto solo puede aparecer en
+    #    decisiones.md, que es donde vive la serie de decisiones. En el resto, los
+    #    baselines van como BASE-<n>. (En prosa, citar "B3" es correcto.)
+    for document in _documentos():
+        if document in (DECISIONES, DOCS_DIR / "README.md"):
+            continue  # el índice y decisiones.md declaran y citan la serie
+        texto = document.read_text(encoding="utf-8")
+        filas = [fila for fila in re.findall(r"^\|.*$", texto, re.M) if _codigos_b_sueltos(fila)]
+        assert not filas, (
+            f"{document} tiene tablas con códigos B<digito> sueltos: {filas[:2]}. "
+            "Los baselines se nombran BASE-<n>; los B<digito> son decisiones"
+        )
+
+    # 3) "B0" solo existió como baseline: la serie de decisiones va de B1 a B13.
+    for document in _documentos():
+        assert not re.search(r"\bB0\b", document.read_text(encoding="utf-8")), (
+            f"{document} usa B0, que era un baseline y ya no existe"
+        )
+
+    # 4) Y el código tampoco numera los baselines: las clases no llevan código.
+    source = Path("src/burn_scar/baselines.py")
+    if source.exists():
+        sueltos = _codigos_b_sueltos(source.read_text(encoding="utf-8"))
+        assert not sueltos, (
+            f"el código numera los baselines con {sueltos}: sus clases son "
+            "BaselinePersistence, BaselineRadialDilation y BaselineAllBurned"
+        )
+
+
 def test_la_documentacion_no_tiene_marcadores_de_conflicto():
     """Un conflicto sin resolver deja el documento roto (y ya ha pasado dos veces)."""
     for document in _documentos():
@@ -204,23 +308,6 @@ def test_las_reglas_del_dataset_estan_documentadas_sin_huecos():
     assert numeros == list(range(1, max(numeros) + 1)), (
         f"las reglas D tienen huecos: {numeros}"
     )
-
-
-def test_el_estado_de_los_baselines_coincide_con_el_codigo():
-    """La documentación no puede afirmar que un baseline está implementado si no lo está."""
-    source = Path("src/burn_scar/baselines.py")
-    if not source.exists():
-        pytest.skip("src/burn_scar/baselines.py no encontrado")
-    codigo = source.read_text(encoding="utf-8")
-    texto = _normalized(DATASET_DOC.read_text(encoding="utf-8"))
-
-    b2_implementado = "B2" in codigo or "Advection" in codigo or "advection" in codigo
-    if b2_implementado:
-        assert "B2" in texto
-    else:
-        assert re.search(r"B2[^\n]*pendiente", texto), (
-            "dataset.md debe declarar que B2 (advección por viento) está pendiente"
-        )
 
 
 def test_los_scripts_mencionados_en_la_documentacion_existen():

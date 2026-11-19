@@ -15,6 +15,11 @@
 
 ### 1.1 Decisiones cerradas (y dónde están escritas)
 
+> **Qué son estos códigos.** `B1`–`B13` son las **decisiones de diseño** que tomó el
+> equipo. No tienen nada que ver con los baselines, que se numeran `BASE-0`–`BASE-2`
+> (`dataset.md` §9): series distintas, sin ningún token en común. El mapa completo de
+> prefijos está en [`docs/README.md`](README.md).
+
 | # | Decisión | Dónde |
 |---|---|---|
 | B1 | El canal de cicatriz lo genera **TMB-S3 congelado** en las tres fases. El umbral espectral queda como ablación | dataset.md §8, operacion.md §4 |
@@ -36,7 +41,7 @@
 | # | Pendiente | Estado / Resolución en v1 | Dónde se decide |
 |---|---|---|---|
 | ~~**P1**~~ | ~~Ejecutar la auditoría de splits~~ | **Hecho.** 62/96 series en TMB-S3; 50 excluidas; quedan 46 | §3 |
-| ~~**P2**~~ | ~~Definir B2 (advección por viento) con precisión~~ | **Descartado: el viento queda fuera del alcance.** No se implementa B2 ni el canal meteorológico (ERA5/GFS). El criterio de aceptación pasa a ser la comparación contra **B0 (persistencia)**, **B1 (dilatación radial)** y el **trivial "todo quemado"**, medidos al mismo umbral operativo y sobre el mismo subconjunto evaluable | dataset.md §9-§10, `baselines.py` |
+| ~~**P2**~~ | ~~Definir BASE-2 (advección por viento) con precisión~~ | **Descartado: el viento queda fuera del alcance.** No se implementa BASE-2 ni el canal meteorológico (ERA5/GFS). El criterio de aceptación pasa a ser la comparación contra **BASE-0 (persistencia)**, **BASE-1 (dilatación radial)** y el **trivial "todo quemado"**, medidos al mismo umbral operativo y sobre el mismo subconjunto evaluable | dataset.md §9-§10, `baselines.py` |
 | ~~**P3**~~ | ~~Fijar el alcance de la entrega: ¿se entrega M-A, M-B o los dos?~~ | **Hecho.** Se entregan y comparan **ambos** (`M-A` cero-disparo con MCD64A1 y `M-B` ajustado en CEMS, más variante Tversky y entrenamiento directo `prop_v4_integrity`) sobre el mismo test canónico | operacion.md §9, dataset.md §8 |
 | ~~**P4**~~ | ~~Decidir si *h* se codifica posicionalmente o como escalar normalizado~~ | **Hecho.** Se codifica de forma **continua como escalar normalizado**: `log1p(h)/2.5` proyectado a canal espacial y fusionado con el resto de entradas. No hay codificación posicional por día ni FiLM | `src/burn_scar/models/propagation.py` |
 | ~~**P5**~~ | ~~Medir el error de TMB-S3 contra CEMS sobre las 46 series~~ | **Hecho.** Cuantificada la brecha entre la etiqueta de ensamblaje (`target`) y el crecimiento real entre rondas (`target_cems`): relación de superficie mediana $37\times$ e IoU $0,033$, publicando siempre ambas métricas por separado | operacion.md §9 |
@@ -46,7 +51,7 @@
 
 > **Estado al cierre de v1.** Los puntos P1–P7 quedaron cerrados o acotados explícitamente:
 > la cadena completa (`R19` → `M-A` en MCD64A1 → `M-B` en CEMS → calibración Tversky y
-> comparación contra `B0`/`B1`/trivial al mismo umbral y sobre el mismo subconjunto
+> comparación contra `BASE-0`/`BASE-1`/trivial al mismo umbral y sobre el mismo subconjunto
 > evaluable) está implementada y verificada en `operacion.md` §9. Queda abierto **P8**: la
 > estratificación por sensor y el estrato de control de TMB-S3, que ningún script
 > publica todavía.
@@ -92,7 +97,7 @@ no se repite.
 | GEE como motor de imagen | STAC + rasterio directo | GEE da imágenes, clima, terreno y cobertura con 5-15 líneas cada uno. Ahorra ~2 días | operacion.md §6 |
 | `copernicus-ems` para CEMS | Cliente HTTP a mano | Ya resuelve activations, products, máscaras de observación, rasterización tri-estado y métricas enmascaradas | datos.md §2.7 |
 | Split por cluster geográfico | Split temporal por año (Mesogeos) o aleatorio | El split por año de Mesogeos mide generalización temporal, no espacial: un test de 2022 puede caer junto a un train de 2019. Con 96 eventos, el aleatorio filtra el mismo incendio entre train y test | B9, D8 |
-| Baselines antes de la red | Ir directo a la arquitectura | Si no supera a B1 (dilatación radial) ni al trivial "todo quemado", no hay modelo | dataset.md §9 |
+| Baselines antes de la red | Ir directo a la arquitectura | Si no supera a BASE-1 (dilatación radial) ni al trivial "todo quemado", no hay modelo | dataset.md §9 |
 | Horizonte anclado en la última observación | Anclar en `event_time` o en la ronda de CEMS | Se acreditaría tiempo en el que el fuego ya estaba quemando; el modelo aprendería horizontes que no tendrá en operación | operacion.md §2 |
 | Meteo de pronóstico (GFS/ECMWF) además del análisis (ERA5) | Solo ERA5-Land | El análisis describe el pasado; para anticipar el frente hace falta el viento futuro | operacion.md §7 |
 | FIRMS/VIIRS como canal de entrada | Omitirlo, por ser grueso y ruidoso | Es la señal más timely sobre dónde está el fuego ahora mismo; aporta el ancla en tiempo real | BL5 |
@@ -303,7 +308,7 @@ alta resolución y observación de 300 m es del X%".
            Cruzar manifest.parquet de TMB-S3 con nuestros eventos
            -> 46 series limpias + CV agrupada de 5 folds
   FASE 0   Mesogeos 1 km + WildFireSpread      -> cadena y referencia de pipeline
-           (tarea extent; los baselines de propagación son B0 y B1, dataset.md §9)
+           (tarea extent; los baselines de propagación son BASE-0 y BASE-1, dataset.md §9)
   FASE 1a  Preentrenamiento con MCD64A1 (supervisor, Mediterráneo)
            -> modelo M-A (que nunca ha visto CEMS)
   FASE 1b  Ajuste con CEMS (46 series, 5 folds)  -> modelo M-B

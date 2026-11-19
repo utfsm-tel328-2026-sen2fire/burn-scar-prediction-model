@@ -267,7 +267,7 @@ con código 1 si algo no está listo.
 |---|---|
 | **Cicatriz de entrada generada por TMB-S3 (congelado)** | Quita CEMS del camino de inferencia sin tren/test shift: en las tres fases la cicatriz sale del mismo modelo (dataset.md §8, §4) |
 | **Horizonte anclado en la última observación** | Si no, el modelo se entrena con horizontes que nunca tendrá en operación (§2) |
-| **El horizonte *h* es una entrada explícita** | Necesario para derivar el perímetro final "agregando horizontes" y para comparar limpiamente con el baseline B1 (dataset.md §2, D10) |
+| **El horizonte *h* es una entrada explícita** | Necesario para derivar el perímetro final "agregando horizontes" y para comparar limpiamente con el baseline BASE-1 (dataset.md §2, D10) |
 | **Muestra por frame OLCI**, no por ronda CEMS | Reproduce la cadencia de operación y da más muestras (dataset.md §2) |
 | **Preentrenamiento con MCD64A1 como supervisor, no como entrada** | MCD64A1 tiene ~6 semanas de latencia: sería imposible en operación, pero es un supervisor de milhões de etiquetas. Nunca entra en inferencia (dataset.md §8) |
 | **El target se mide desde *f*, no desde la ronda anterior** | `polígono(r+1) − scar_TMB3(f)`: medir desde la ronda cuenta quemado ya visible en la imagen (dataset.md §2, D9) |
@@ -291,7 +291,7 @@ con código 1 si algo no está listo.
 # 1. Regenerar el dataset (≈20 s con GPU; no requiere re-descargar nada)
 uv run --extra rocm python scripts/build_pytorch_dataset.py
 
-# 2. Fijar la referencia de comparación (baselines B0/B1 sobre el dataset nuevo)
+# 2. Fijar la referencia de comparación (baselines BASE-0/BASE-1 sobre el dataset nuevo)
 uv run --extra rocm python scripts/evaluate_baselines.py
 
 # 3. Entrenar (≈1 s por época y fold → ~1,5 min para 15 épocas × 5 folds)
@@ -350,7 +350,7 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
   predice ausencia de quemado, no que no haya aprendido nada.
 - **Un target sin quemado se reporta como NaN**, no como F1 = 1,0. Si un informe muestra
   un 100% sin más, suspecta de un dataset vacío antes de congratularte.
-- La referencia a superar es **B1 (dilatación radial)** del `evaluate_baselines.py` sobre
+- La referencia a superar es **BASE-1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
 
 ## 9. Qué etiqueta se está midiendo (diagnóstico del target)
@@ -435,8 +435,8 @@ modelos se hace además a un **umbral común de 0,10**, que es donde se comparan
 
 | Modelo | Umbral | F1 | Precisión | Evaluables |
 |---|---:|---:|---:|---:|
-| B0 persistencia | 0,10 | 0,00% | 0,00% | 24/25 |
-| B1 dilatación radial | 0,10 | 15,94% | 19,11% | 24/25 |
+| BASE-0 persistencia | 0,10 | 0,00% | 0,00% | 24/25 |
+| BASE-1 dilatación radial | 0,10 | 15,94% | 19,11% | 24/25 |
 | Trivial "todo quemado" | 0,10 | 16,29% | 9,41% | 24/25 |
 | **M-A** (`mcd_pretrained`, cero-disparo) | 0,10 | 19,71% | 14,05% | 24/25 |
 | **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | 30,98% | 29,89% | 24/25 |
@@ -448,8 +448,8 @@ modelos se hace además a un **umbral común de 0,10**, que es donde se comparan
 
 | Modelo | Umbral | F1 | Evaluables |
 |---|---:|---:|---:|
-| B0 persistencia | 0,10 | 0,00% | 23/25 |
-| B1 dilatación radial | 0,10 | 7,30% | 23/25 |
+| BASE-0 persistencia | 0,10 | 0,00% | 23/25 |
+| BASE-1 dilatación radial | 0,10 | 7,30% | 23/25 |
 | Trivial "todo quemado" | 0,10 | 8,42% | 23/25 |
 | **M-A** (`mcd_pretrained`, cero-disparo) | 0,10 | 10,61% | 23/25 |
 | **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | 11,80% | 23/25 |
@@ -488,7 +488,7 @@ Cómo leerlo:
 
 - **El número publicable de propagación es 14,68%** (umbral común 0,10), no 36,46%. El
   segundo mide desempeño contra una etiqueta que incluye quemado no detectado.
-- Contra el crecimiento real, el modelo está por encima de B1 (7,30%) y del trivial
+- Contra el crecimiento real, el modelo está por encima de BASE-1 (7,30%) y del trivial
   (8,42%), pero las diferencias siguen siendo modestas y el test contiene solo 7 series y
   25 muestras.
 - **El umbral importa más que el modelo**: el mismo `prop_v4_integrity` pasa de 14,68% a
@@ -633,7 +633,7 @@ etiquetas**.
 Este proyecto evalúa **pronóstico**: predecir qué se quemará en las próximas horas, con la
 etiqueta del incremento CEMS. **Son dos preguntas distintas**, así que ese F1 no es una
 meta ni una "brecha a cerrar": no se compara. La vara de este proyecto es **el trivial "todo
-quemado"** y **B1**, medidos al mismo umbral operativo que el modelo (16,29% y 15,94%
+quemado"** y **BASE-1**, medidos al mismo umbral operativo que el modelo (16,29% y 15,94%
 contra la etiqueta de ensamblaje; 8,42% y 7,30% contra la referencia), porque usan la misma
 información disponible que el modelo.
 
@@ -649,8 +649,8 @@ evaluable**; solo cambia el umbral, que se indica en la tabla.
 
 | Modelo | Umbral | F1 ensamblaje | F1 referencia | Precisión (ensamblaje) |
 |---|---:|---:|---:|---:|
-| B0 persistencia | 0,10 | 0,00% | 0,00% | 0,00% |
-| B1 dilatación radial | 0,10 | 15,94% | 7,30% | 19,11% |
+| BASE-0 persistencia | 0,10 | 0,00% | 0,00% | 0,00% |
+| BASE-1 dilatación radial | 0,10 | 15,94% | 7,30% | 19,11% |
 | Trivial "todo quemado" | 0,10 | 16,29% | 8,42% | 9,41% |
 | **M-A** (`mcd_pretrained`, cero-disparo sin CEMS) | 0,10 | **19,71%** | **10,61%** | 14,05% |
 | **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | **30,98%** | **11,80%** | 29,89% |
@@ -662,7 +662,7 @@ Cómo leerlo:
 
 - **M-A es una transferencia real**: sin haber visto CEMS ni una sola etiqueta de propagación,
   alcanza 19,71% contra la etiqueta de ensamblaje y 10,61% contra la referencia, por encima
-  de B1 (15,94% / 7,30%) y del trivial (16,29% / 8,42%) en las dos etiquetas.
+  de BASE-1 (15,94% / 7,30%) y del trivial (16,29% / 8,42%) en las dos etiquetas.
 - **El ajuste fino improves a M-A** en la etiqueta de ensamblaje (30,98% frente a 19,71%),
   pero **no** en la de referencia (11,80% frente a 10,61%): el salto grande del ajuste es
   sobre la etiqueta grande, que es la más fácil.
@@ -717,6 +717,6 @@ uv run --extra rocm python scripts/train_propagation.py \
 | 6 | M-B inicializa cada fold desde el checkpoint M-A sin romper el entrenamiento desde cero | `dataset.md` §8 |
 
 > **Dónde está el resultado.** La comparación de este pipeline está en §9
-> ("Comparativa M-A vs M-B"). Con los runs actuales, M-A **ya supera a B1 y al trivial**
+> ("Comparativa M-A vs M-B"). Con los runs actuales, M-A **ya supera a BASE-1 y al trivial**
 > sin haber visto CEMS, y el ajuste M-B mejora a M-A sobre la etiqueta de ensamblaje pero
 > no sobre la de referencia. El flujo está implementado y es reproducible.

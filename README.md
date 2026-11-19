@@ -36,8 +36,8 @@ bajo el mismo protocolo y umbral común (`0,10`), más el umbral operativo CV (`
 
 | Modelo | Umbral | F1 (ensamblaje) | F1 (referencia, propagación real) | Precisión (ensamblaje) |
 |---|---:|---:|---:|---:|
-| B0 persistencia | 0,10 | 0,00% | 0,00% | 0,00% |
-| B1 dilatación radial | 0,10 | 15,94% | 7,30% | 19,11% |
+| BASE-0 persistencia | 0,10 | 0,00% | 0,00% | 0,00% |
+| BASE-1 dilatación radial | 0,10 | 15,94% | 7,30% | 19,11% |
 | Trivial "todo quemado" | 0,10 | 16,29% | 8,42% | 9,41% |
 | **M-A** (`mcd_pretrained`, cero-disparo sin CEMS) | 0,10 | **19,71%** | **10,61%** | 14,05% |
 | **M-B** (`prop_m_b_finetuned`, BCE+Dice) | 0,10 | **30,98%** | **11,80%** | 29,89% |
@@ -47,7 +47,7 @@ bajo el mismo protocolo y umbral común (`0,10`), más el umbral operativo CV (`
 
 El número publicable de propagación es el de la **referencia** (**14,68%** a umbral común
 0,10): la etiqueta de ensamblaje incluye quemado que TMB-S3 no detectó. `M-A` demuestra
-transferencia pura en cero-disparo superando a `B1` y al trivial sin haber visto CEMS; `M-B + Tversky`
+transferencia pura en cero-disparo superando a `BASE-1` y al trivial sin haber visto CEMS; `M-B + Tversky`
 estabiliza el umbral entre folds (`0,10–0,20`) y eleva la precisión al **39,53%**. El arranque
 en frío **no está representado** y no se publica un desempeño para él; las bandas de horizonte
 se reportan solo como diagnóstico y no filtran nada. La tabla completa, con IoU, precisión,
@@ -60,7 +60,7 @@ Dos cosas que conviene saber antes de citar cifras:
   entradas duplicadas y una serie de test con WorldCover vacío.
 - `M-A`, `M-B` y `M-B + Tversky` están entrenados y medidos **sobre el mismo test, con el
   mismo umbral y el mismo subconjunto evaluable** que el modelo de producción (tabla
-  arriba). `M-A` ya supera a B1 y al trivial sin haber visto CEMS; el ajuste `M-B` mejora a
+  arriba). `M-A` ya supera a BASE-1 y al trivial sin haber visto CEMS; el ajuste `M-B` mejora a
   `M-A`, pero todavía no supera al entrenamiento desde cero.
 - Las cifras son **comprobables**: los JSON de resultados (baselines sobre el dataset
   canónico, auditorías de integridad y una reproducción local del run) están versionados en
@@ -86,7 +86,7 @@ uv run python -c "from huggingface_hub import snapshot_download; \
 #    en docs/dataset.md §11. El paso final, si el dataset ya está descargado:
 uv run --extra rocm python scripts/build_pytorch_dataset.py
 
-# 3. Baselines de referencia (B0, B1 y el trivial "todo quemado")
+# 3. Baselines de referencia (BASE-0, BASE-1 y el trivial "todo quemado")
 uv run --extra rocm python scripts/evaluate_baselines.py
 
 # 4. Entrenamiento: validación cruzada de 5 folds (~2 min con el dataset vigente)
@@ -154,9 +154,9 @@ en qué fichero.
 4. Evaluar la calibración de las salidas y la estabilidad del umbral por fold y horizonte.
 5. Ampliar el soporte de la cola de horizontes antes de dar significado a más de tres días.
 
-> **El viento queda fuera del alcance del proyecto.** No se implementa B2 (advección por
+> **El viento queda fuera del alcance del proyecto.** No se implementa BASE-2 (advección por
 > viento) ni el canal meteorológico (ERA5/GFS). El criterio de aceptación se sustituye por
-> la comparación contra **B1** y el **trivial "todo quemado"** medidos al mismo umbral
+> la comparación contra **BASE-1** y el **trivial "todo quemado"** medidos al mismo umbral
 > operativo y sobre el mismo subconjunto evaluable. Ver
 > [`docs/decisiones.md`](docs/decisiones.md) §1.2 (P2).
 
