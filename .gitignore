@@ -36,3 +36,6 @@ checkpoints/
 .env
 .env.*
 !.env.example
+
+# Logs de ejecución y de descarga (no se versionan: se regeneran)
+*.log

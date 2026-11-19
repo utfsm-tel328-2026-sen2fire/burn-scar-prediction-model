@@ -183,7 +183,7 @@ uv run --extra cuda python scripts/visualize_predictions.py \
 5. **Overlay TP/FP/FN**: azul = `x_scar`, verde = acierto (`TP`), rojo = falsa alarma (`FP`), amarillo = omisión (`FN`), gris = ignorado (`mask == 255`).
 
 ### Cómo guardar/exportar las imágenes
-1. **Desde la propia página de TensorBoard**: en la pestaña **IMAGES**, haz clic derecho sobre cualquier panel y selecciona *"Guardar imagen como..."* (o activa *"Show actual image size"* en el panel superior para descargarla a resolución completa escalada por `--scale`).
+1. **Desde la propia página de TensorBoard**: en la pestaña **IMAGES**, haz clic derecho sobre cualquier panel y selecciona *"Guardar imagen como..."* (o activa *"Show actual image size"* en el panel superior para descargarlo a resolución completa escalada por `--scale`).
 2. **Exportación directa en lote a PNG**: agrega `--save-dir <carpeta>` al comando para guardar automáticamente todos los paneles generados como archivos `.png` listos para informes:
    ```bash
    uv run --extra cuda python scripts/visualize_predictions.py \
@@ -192,4 +192,40 @@ uv run --extra cuda python scripts/visualize_predictions.py \
      --n-samples 6 \
      --save-dir runs/exported_panels_fold0
    ```
+
+### Los paneles del repositorio: la carpeta `outputs/`
+
+La carpeta `outputs/` del repo guarda **40 paneles exportados a PNG** de los runs de
+diagnóstico, para poder mirar el comportamiento espacial del modelo sin levantar
+TensorBoard. Es material de figura para el informe: la lectura visual de un frente.
+
+| Carpeta | Qué contiene |
+|---|---|
+| `outputs/vis_m_b_fold0/` | M-B (ajuste con CEMS), fold 0: las 4 mejores y las 4 peores muestras |
+| `outputs/vis_m_b_fold0_random/` | M-B, fold 0: 2 muestras elegidas al azar |
+| `outputs/vis_tversky_mpw5_fold0/` | M-B + Tversky (`w_max = 5`), fold 0: las 6 mejores y las 6 peores |
+| `outputs/vis_tversky_mpw5_fold0_random/` | M-B + Tversky, fold 0: 6 muestras al azar |
+| `outputs/vis_tversky_mpw5_fold0_thr03/` | M-B + Tversky, fold 0, binarizado a umbral 0,30 (y no a 0,50) |
+
+El nombre de cada fichero dice de dónde sale: `best_01_idx016_EMSR899_AOI01_h0d_f1_070.png`
+es la mejor muestra (por F1) del índice 016 de la serie `EMSR899_AOI01`, con horizonte de
+0 días.
+
+**Cómo se leen**: cada PNG es una tira de cinco bloques (ver §6): imagen de entrada, cicatriz
+conocida, **verdad** (verde = quemado nuevo), **probabilidad** (mapa de calor) y overlay de
+aciertos: **verde = acierto, rojo = falsa alarma, amarillo = omisión**.
+
+**Cómo se regeneran** (el comando que produjo cada carpeta):
+
+```bash
+uv run --extra rocm python scripts/visualize_predictions.py \
+  --checkpoint checkpoints/<run_m_b>/best_fold_0.pt \
+  --mode both --n-samples 6 \
+  --save-dir outputs/vis_m_b_fold0
+```
+
+> Son **figuras de diagnóstico de los runs M-B y M-B + Tversky**, no del modelo de
+> producción: las cifras publicables son las de [`operacion.md`](operacion.md) §9, y estas
+> imágenes son la lectura cualitativa de esas mismas etiquetas. Se generan sobre el split de
+> **validación** de su fold, no sobre el test.
 

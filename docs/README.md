@@ -19,7 +19,7 @@
 | [`decisiones.md`](decisiones.md) | Decisiones cerradas (B), pendientes (P, BL), alternativas descartadas, riesgos (R), preguntas abiertas | **cambia** |
 | [`investigacion.md`](investigacion.md) | Estado del arte, por qué 300 m, cómo verificar los números | referencia |
 | [`datos.md`](datos.md) | Catálogo de fuentes: dónde está cada dato, IDs, endpoints, licencias | referencia |
-| [`experiment-tracking.md`](experiment-tracking.md) | TensorBoard compartido, checkpoints, NFS | guía |
+| [`experiment-tracking.md`](experiment-tracking.md) | TensorBoard compartido, checkpoints, NFS, paneles de predicción en PNG | guía |
 | [`nixos.md`](nixos.md) | Cómo trabajar en NixOS con devenv: shell, acelerador, tareas | guía |
 
 Fuera de `docs/`, `artefactos/canonicos.json` registra las sumas de verificación de los
@@ -31,6 +31,11 @@ integridad y una reproducción local del run), versionados para que las cifras d
 
 El corte es **lo que puede cambiar vs. lo que ya está cerrado**: `decisiones.md` es el único
 sitio donde se toca lo que está abierto; `dataset.md` y `datos.md` son especificación.
+
+Y fuera de `docs/` hay dos carpetas de material visual: `outputs/` guarda los **paneles PNG
+de las predicciones** (la lectura cualitativa del frente; se explican en
+[`experiment-tracking.md`](experiment-tracking.md) §6) y `artefactos/resultados/` los
+**JSON de resultados publicables**.
 
 ## Casa canónica de cada dato
 
@@ -62,6 +67,7 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Composición canónica del dataset y exclusiones | `operacion.md` §9 |
 | Resultados canónicos y soporte por banda de horizonte | `operacion.md` §9 |
 | Comparativa M-A vs M-B (diagnóstico, no canónica) | `operacion.md` §9 |
+| Paneles de predicción en PNG (figuras del informe) | `experiment-tracking.md` §6 |
 | Flujo de preentrenamiento MCD64A1 | `operacion.md` §10 |
 | Sumas de verificación de los artefactos | `artefactos/canonicos.json` |
 | Resultados publicables en JSON (baselines, auditorías, reproducción local) | `artefactos/resultados/` |

@@ -66,6 +66,20 @@ Dos cosas que conviene saber antes de citar cifras:
   canónico, auditorías de integridad y una reproducción local del run) están versionados en
   [`artefactos/resultados/`](artefactos/resultados/README.md).
 
+### Ver el modelo en acción
+
+Cada panel es una tira de cinco bloques: la imagen de entrada, la cicatriz conocida, **la
+verdad** (verde = quemado nuevo), **lo que predice el modelo** (mapa de calor) y el
+overlay de aciertos (**verde = acierto, rojo = falsa alarma, amarillo = omisión**).
+
+| Mejor muestra (M-B + Tversky) | Peor muestra (M-B + Tversky) |
+|---|---|
+| ![Mejor muestra: el acierto se concentra en el frente](outputs/vis_tversky_mpw5_fold0/best_01_idx028_EMSR898_AOI02_h3d_f1_063.png) | ![Peor muestra: el modelo se equivoca de sitio y se deja quemado por detrás](outputs/vis_tversky_mpw5_fold0/worst_01_idx025_EMSR898_AOI01_h0d_f1_001.png) |
+
+La izquierda acierta el frente; la derecha es un fallo honesto: predice donde no se quemó
+y se deja el quemado real sin ver. Están las 40 en [`outputs/`](outputs/), con su
+explicación en [`docs/experiment-tracking.md`](docs/experiment-tracking.md) §6.
+
 ## Puesta en marcha
 
 ```bash
@@ -174,6 +188,7 @@ La auditoría reproducible del dataset, el barrido de umbrales y la procedencia 
 ├── tests/
 ├── openspec/      # flujo de trabajo OpenSpec (specs de dataset, evaluación, entorno y tracking)
 ├── artefactos/    # sumas de verificación y resultados publicables (ver artefactos/resultados/)
+├── outputs/       # paneles PNG de las predicciones (ver docs/experiment-tracking.md §6)
 ├── pyproject.toml
 └── .env.example
 ```
