@@ -852,56 +852,119 @@ uv run --extra rocm python scripts/verify_canonical_artifacts.py</code></pre>
 
     <!-- ==================== SECCIÓN 7: FRONTEND ==================== -->
     <section id="sec-7" class="page-break">
-      <h2>7. Uso del Frontend / Interfaz Web</h2>
+      <h2>7. Uso del Frontend / Interfaz Web (Gradio)</h2>
 
-      <p class="note">
-        <strong>Sección reservada para el equipo de Frontend:</strong> completar los bloques siguientes
-        con las instrucciones reales de instalación, descripción de la interfaz y capturas de pantalla.
+      <p>
+        El módulo de interfaz gráfica (<code>interfaz-gradio</code>) provee un entorno web interactivo local
+        para ejecutar inferencias del modelo <strong>ConvLSTM + MiniSegFormer</strong> sin necesidad de interactuar
+        con la línea de comandos. Está diseñado para operar sobre cuadrículas espaciales de
+        <strong>19,2 × 19,2 km</strong> (parches de <code>64×64</code> píxeles a 300 m de resolución).
       </p>
 
       <h3>7.1 Requisitos, librerías e instalación</h3>
-      <div class="todo-block">
-        [COMPLETAR FRONTEND] Indicar framework utilizado, versión de Node.js/Python, librerías de mapas
-        y variables de entorno de conexión con la API/backend (ej. <code>VITE_API_URL</code>).
-      </div>
-      <pre><code><span class="c"># [COMPLETAR FRONTEND] Comandos de instalación y arranque</span>
-cd frontend
-npm install
-npm run dev</code></pre>
+      <p>
+        Requiere <strong>Python &ge; 3.11</strong> y el gestor de paquetes <code>uv</code> (o <code>pip</code>).
+        A diferencia del módulo de entrenamiento, la interfaz web puede ejecutarse de forma ligera tanto en
+        entornos con GPU como en estaciones de trabajo estándar solo con <strong>CPU</strong>.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Librería</th>
+            <th>Versión</th>
+            <th>Función en la interfaz</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>gradio</code></td>
+            <td>&ge; 4.44 (probado en 6.30)</td>
+            <td>Despliegue del servidor web local, componentes de carga de archivos y renderizado reactivo.</td>
+          </tr>
+          <tr>
+            <td><code>torch</code></td>
+            <td>&ge; 2.1 (CPU / CUDA)</td>
+            <td>Carga del checkpoint entrenado (<code>best_fold_0.pt</code>) y ejecución del pase hacia adelante (<code>inference_mode</code>).</td>
+          </tr>
+          <tr>
+            <td><code>numpy</code></td>
+            <td>&ge; 1.26</td>
+            <td>Lectura de paquetes satelitales comprimidos (<code>.npz</code>) y tensores multidimensionales.</td>
+          </tr>
+          <tr>
+            <td><code>opencv-python</code></td>
+            <td>&ge; 4.9</td>
+            <td>Reescalado visual de matrices (<code>64×64</code> a <code>320×320</code> px) y aplicación de mapas térmicos (<code>COLORMAP_INFERNO</code>).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <pre><code><span class="c"># 1. Clonar el repositorio de la interfaz gráfica</span>
+git clone &lt;URL_DEL_REPOSITORIO_FRONTEND&gt;
+cd interfaz-gradio
+
+<span class="c"># 2. Sincronizar dependencias mediante uv (recomendado) o pip</span>
+uv sync
+<span class="c"># Alternativa con entorno virtual estándar:</span>
+<span class="c"># python3.11 -m venv .venv &amp;&amp; source .venv/bin/activate</span>
+<span class="c"># pip install gradio torch numpy opencv-python</span>
+
+<span class="c"># 3. Verificar que existan las carpetas 'models/' y 'pesos/best_fold_0.pt' en la raíz y ejecutar:</span>
+uv run python main.py</code></pre>
+
+      <p class="note">
+        <strong>Acceso local:</strong> al iniciar <code>main.py</code>, el servidor levantará la aplicación en
+        <code>http://127.0.0.1:7860</code>. Basta con abrir esa dirección en cualquier navegador web.
+      </p>
 
       <h3>7.2 Funcionalidades de la interfaz</h3>
-      <div class="todo-block">
-        [COMPLETAR FRONTEND] Resumir qué permite hacer la aplicación web: visualización del mapa, selección
-        de evento/AOI, selección del horizonte <em>h</em>, capas de probabilidad/umbral y exportación.
-      </div>
+      <ul>
+        <li><strong>Carga de escena satelital unificada:</strong> soporta paquetes de evento en formato <code>.npz</code> (que integran las bandas Sentinel-3 OLCI, elevación DEM, cobertura WorldCover y cicatriz inicial SCAR) así como tensores individuales <code>.npy</code>.</li>
+        <li><strong>Proyección temporal dinámica:</strong> permite configurar de manera continua el horizonte de días a proyectar (<em>H</em>), recalculando la expansión esperada del frente de fuego.</li>
+        <li><strong>Visualización térmica comparativa:</strong> renderiza lado a lado la cicatriz actual detectada y el mapa de probabilidad de nueva quema en escala térmica de alto contraste.</li>
+        <li><strong>Cálculo automatizado de impacto:</strong> aplica el umbral operativo calibrado (<code>0.20</code>) para contabilizar píxeles críticos y estimar la superficie afectada en hectáreas (considerando <code>9 ha</code> por píxel de 300 × 300 m), contrastando además contra la expansión real registrada (<em>ground truth</em>) cuando está disponible en el archivo de prueba.</li>
+      </ul>
 
       <div class="screenshot">
-        <div class="s-title">Figura 7 — Vista principal de la aplicación web</div>
-        <div class="s-desc">Captura de la pantalla inicial del frontend (mapa y controles principales).</div>
-        <div class="s-file">Reemplazar con: &lt;img src="capturas_html/captura_07.png" alt="Frontend inicio"&gt;</div>
-        <!-- <img src="capturas_html/captura_07.png" alt="Frontend inicio" /> -->
+        <img src="capturas_html/captura_07.png" alt="Pantalla inicial de la interfaz web en Gradio" />
+        <div class="caption">Figura 7. Vista principal de la aplicación web en Gradio al iniciar el servidor local.</div>
       </div>
 
       <h3>7.3 Guía de uso paso a paso</h3>
-      <div class="todo-block">
-        [COMPLETAR FRONTEND] Explicar paso a paso el flujo normal de usuario:<br />
-        1. Selección de zona o incendio.<br />
-        2. Configuración de parámetros (horizonte <em>h</em>, umbral, fecha) y ejecución de la consulta.<br />
-        3. Interpretación del mapa resultante y métricas mostradas en pantalla.
+      <ol>
+        <li>
+          <strong>Carga de escena satelital (Panel 1):</strong> haz clic en el recuadro <em>Paquete Satelital del Evento</em>
+          (o arrastra el archivo) para seleccionar una muestra válida (por ejemplo, <code>EMSR689_AOI01__F_20230901T081622.npz</code>).
+          La interfaz validará el peso y formato del tensor cargado.
+        </li>
+        <li>
+          <strong>Configuración del horizonte temporal (Panel 2):</strong> en el campo <em>Días a proyectar (H)</em>,
+          ingresa el intervalo temporal deseado en días (por ejemplo, <code>1.5</code> o <code>2.0</code> días). Si se ingresa <code>0</code>,
+          el sistema utiliza por defecto el horizonte original registrado en los metadatos del archivo.
+        </li>
+        <li>
+          <strong>Ejecución y lectura de resultados (Panel 3):</strong> presiona el botón naranja <strong>Calcular Predicción</strong>.
+          En pocos segundos se actualizará el panel derecho mostrando:
+          <ul>
+            <li><em>Cicatriz Actual (SCAR - Entrada t):</em> distribución espacial del área quemada inicial.</li>
+            <li><em>Probabilidad de Quema Nueva (t + H):</em> zonas iluminadas donde el modelo proyecta el avance del incendio.</li>
+            <li><em>Métricas de Superficie y Validación:</em> resumen numérico con los píxeles críticos, hectáreas proyectadas y probabilidad máxima detectada en la escena.</li>
+          </ul>
+        </li>
+        <li>
+          <strong>Reinicio de consulta:</strong> para evaluar un nuevo incendio o limpiar los paneles actuales, presiona el botón <strong>Limpiar</strong>.
+        </li>
+      </ol>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_08.png" alt="Carga de archivo .npz y configuración del horizonte H" />
+        <div class="caption">Figura 8. Carga del paquete satelital de un evento real (<code>.npz</code>) y definición del horizonte temporal <em>H</em>.</div>
       </div>
 
       <div class="screenshot">
-        <div class="s-title">Figura 8 — Selección de parámetros de predicción</div>
-        <div class="s-desc">Captura del panel o formulario donde se configura la predicción.</div>
-        <div class="s-file">Reemplazar con: &lt;img src="capturas_html/captura_08.png" alt="Parámetros Frontend"&gt;</div>
-        <!-- <img src="capturas_html/captura_08.png" alt="Parámetros Frontend" /> -->
-      </div>
-
-      <div class="screenshot">
-        <div class="s-title">Figura 9 — Visualización de resultados en el mapa</div>
-        <div class="s-desc">Captura del mapa con la predicción desplegada, leyenda y métricas.</div>
-        <div class="s-file">Reemplazar con: &lt;img src="capturas_html/captura_09.png" alt="Resultados Frontend"&gt;</div>
-        <!-- <img src="capturas_html/captura_09.png" alt="Resultados Frontend" /> -->
+        <img src="capturas_html/captura_09.png" alt="Resultados de inferencia en vivo y métricas de superficie" />
+        <div class="caption">Figura 9. Visualización de resultados en vivo: cicatriz actual, mapa de probabilidad de quema nueva y reporte operativo de hectáreas.</div>
       </div>
     </section>
 
