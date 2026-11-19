@@ -67,7 +67,7 @@ es el contrato: si un número cambia, se cambia en su fila, y en ningún otro si
 | Composición canónica del dataset y exclusiones | `operacion.md` §9 |
 | Resultados canónicos y soporte por banda de horizonte | `operacion.md` §9 |
 | Comparativa M-A vs M-B (diagnóstico, no canónica) | `operacion.md` §9 |
-| Paneles de predicción en PNG (figuras del informe) | `experiment-tracking.md` §6 |
+| Paneles de predicción en PNG (figuras para la presentación) | `experiment-tracking.md` §6 |
 | Flujo de preentrenamiento MCD64A1 | `operacion.md` §10 |
 | Sumas de verificación de los artefactos | `artefactos/canonicos.json` |
 | Resultados publicables en JSON (baselines, auditorías, reproducción local) | `artefactos/resultados/` |
@@ -113,8 +113,7 @@ siempre un baseline.
 1. **No duplicar.** Antes de escribir un dato en un documento, comprobar en la tabla de
    arriba dónde vive y enlazar en su lugar.
 2. **Conservar los identificadores.** `D1-D22`, `R1-R22`, `B1-B13`, `P1-P8`, `BL1-BL7`,
-   `M-A/M-B` se citan en el código, en las specs de OpenSpec y en el informe: no se
-   renumeran.
+   `M-A/M-B` se citan en el código y en las specs de OpenSpec: no se renumeran.
 3. **Las referencias son cualificadas.** Cuando una referencia cruza de documento, se
    escribe con el fichero (`dataset.md §7`); dentro del mismo documento, basta `§7`.
 4. **Actualizar las referencias con el contenido.** Si una sección cambia de sitio, hay que

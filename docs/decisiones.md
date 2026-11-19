@@ -194,7 +194,7 @@ crecimiento**, el mismo número que el censo de dataset.md §3).
 
 > **El criterio de 150 km se descarta como criterio de split.** Aplicado estrictamente deja
 > **2 series mediterráneas** (EMSR914 a1 y a2, Albania): inviable como conjunto de
-> evaluación. Se conserva como **dato del informe** (la geografía mediterránea de CEMS y
+> evaluación. Se conserva como **dato de referencia** (la geografía mediterránea de CEMS y
 > la de TMB-S3 están solapadas), no como regla.
 
 > **Rehacer el split por año no arregla nada.** La colisión es con el *split de TMB-S3*, no
@@ -298,7 +298,7 @@ arquitectura de tres fuentes.
                         convierte en un resultado del propio trabajo.
 ```
 
-Es también una cifra muy valiosa para el informe: "la divergencia entre delineación de
+Es también una cifra muy valiosa para el análisis: "la divergencia entre delineación de
 alta resolución y observación de 300 m es del X%".
 
 ## 7. Escalera de implementación
@@ -317,5 +317,5 @@ alta resolución y observación de 300 m es del X%".
 ```
 
 > **FASE 1a y FASE 1b son independientes**: si se acaba el tiempo, FASE 1a ya da un
-> resultado defendible (M-A), y FASE 1b solo lo mejora. El informe reporta los dos
+> resultado defendible (M-A), y FASE 1b solo lo mejora. Se reportan los dos
 > (dataset.md §8).

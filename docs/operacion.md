@@ -125,7 +125,7 @@ Por qué TMB-S3 y no una cabeza de delineación propia:
 **Lo que se pierde y lo que se gana.** Se pierde la cabeza de delineación propia, y con
 ella el preentrenamiento con MCD64A1 como regularizador de esa cabeza. Se gana: un
 proyecto mucho más acotado, y una cicatriz de calidad **medible y citable** (el F1 de
-TMB-S3 medido sobre el propio test set es una figura del informe).
+TMB-S3 medido sobre el propio test set es una cifra de referencia).
 
 ### El problema serio: TMB-S3 se sabe de memoria 50 de nuestras series
 
@@ -348,8 +348,8 @@ Con Ctrl+C se pierde el fold en curso y no queda traza de por qué murió el pro
   (activar una alerta, categorizar un mapa de riesgo).
 - **Recall** importa tanto como el F1: un F1 bajo con recall ~0 significa que el modelo
   predice ausencia de quemado, no que no haya aprendido nada.
-- **Un target sin quemado se reporta como NaN**, no como F1 = 1,0. Si un informe muestra
-  un 100% sin más, suspecta de un dataset vacío antes de congratularte.
+- **Un target sin quemado se reporta como NaN**, no como F1 = 1,0. Si un informe de
+  evaluación muestra un 100% sin más, suspecta de un dataset vacío antes de congratularte.
 - La referencia a superar es **BASE-1 (dilatación radial)** del `evaluate_baselines.py` sobre
   el mismo dataset.
 
@@ -596,14 +596,14 @@ convención que emite el rasterizador CEMS y la que espera la visualización, do
 
 Una **muestra es evaluable** cuando su métrica es informativa, es decir cuando la verdad
 contiene quemado por encima del umbral de evaluación. Si no lo hay, el F1 es `NaN`: no es un
-0, es "no se puede medir". Por eso los informes informan de los tres números:
+0, es "no se puede medir". Por eso los informes de evaluación informan de los tres números:
 
 - **Series evaluables**: cuántas series han podido medirse (el promedio es por evento).
 - **Muestras evaluables**: cuántas muestras del conjunto tienen métrica informativa.
 - **Total**: cuántas muestras había en el conjunto evaluado.
 
 Un subconjunto con pocas muestras evaluables está inflando su promedio por evento, así que
-el recuento es parte del número, no un detalle del informe. Cuando una muestra no tiene
+el recuento es parte del número, no un detalle del informe de evaluación. Cuando una muestra no tiene
 ronda CEMS previa, su validez común es íntegramente `255` y su métrica contra la etiqueta de
 referencia no es informativa: cuenta como no evaluable, no como un cero.
 

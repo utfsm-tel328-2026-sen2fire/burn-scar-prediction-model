@@ -184,7 +184,7 @@ uv run --extra cuda python scripts/visualize_predictions.py \
 
 ### Cómo guardar/exportar las imágenes
 1. **Desde la propia página de TensorBoard**: en la pestaña **IMAGES**, haz clic derecho sobre cualquier panel y selecciona *"Guardar imagen como..."* (o activa *"Show actual image size"* en el panel superior para descargarlo a resolución completa escalada por `--scale`).
-2. **Exportación directa en lote a PNG**: agrega `--save-dir <carpeta>` al comando para guardar automáticamente todos los paneles generados como archivos `.png` listos para informes:
+2. **Exportación directa en lote a PNG**: agrega `--save-dir <carpeta>` al comando para guardar automáticamente todos los paneles generados como archivos `.png` listos para usar como figuras:
    ```bash
    uv run --extra cuda python scripts/visualize_predictions.py \
      --checkpoint checkpoints/<run_namespace>/best_fold_0.pt \
@@ -197,7 +197,7 @@ uv run --extra cuda python scripts/visualize_predictions.py \
 
 La carpeta `outputs/` del repo guarda **40 paneles exportados a PNG** de los runs de
 diagnóstico, para poder mirar el comportamiento espacial del modelo sin levantar
-TensorBoard. Es material de figura para el informe: la lectura visual de un frente.
+TensorBoard. Es material de figura: la lectura visual de un frente.
 
 | Carpeta | Qué contiene |
 |---|---|

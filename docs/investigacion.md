@@ -3,7 +3,7 @@
 > **En una frase:** por qué se eligió 300 m, qué dicen los benchmarks comparables y cómo se
 > pueden volver a comprobar los números de este repositorio.
 >
-> Material de referencia y de informe. Aquí no se decide nada: se justifica. Lo decidido
+> Material de referencia. Aquí no se decide nada: se justifica. Lo decidido
 > está en [`decisiones.md`](decisiones.md) y [`dataset.md`](dataset.md).
 
 ## 1. Resumen ejecutivo
