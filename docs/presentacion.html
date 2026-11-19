@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Burn Scar Prediction Model — Presentación TEL328</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,500;0,6..72,700;1,6..72,500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --paper: #f6f3ec;
+      --paper-2: #ede8dd;
+      --surface: #ffffff;
+      --ink: #1a1917;
+      --ink-muted: #57534e;
+      --ink-soft: #78716c;
+      --rule: #d6cfc2;
+      --ember: #c2410c;
+      --ember-dark: #9a3412;
+      --ember-soft: #ffedd5;
+      --forest: #2d5a3d;
+      --forest-soft: #e6f0e9;
+      --slate: #171918;
+      --slate-2: #222624;
+      --slate-rule: #353b38;
+      --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #121312;
+      color: var(--ink);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .stage {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .deck {
+      position: relative;
+      width: min(100vw - 32px, calc((100vh - 56px) * 16 / 9));
+      height: min(100vh - 56px, calc((100vw - 32px) * 9 / 16));
+      background: var(--paper);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      padding: 4% 5% 3.4%;
+      background: var(--paper);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    .slide.active { display: flex; }
+
+    .slide.dark {
+      background: var(--slate);
+      color: #f3f1eb;
+    }
+
+    .slide.dark::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    .slide-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--rule);
+      margin-bottom: 22px;
+      position: relative;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+
+    .slide.dark .slide-top { border-bottom-color: var(--slate-rule); }
+
+    .kicker {
+      font-family: var(--font-mono);
+      font-size: clamp(10.5px, 0.85vw, 12px);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ember);
+      font-weight: 600;
+    }
+
+    .slide.dark .kicker { color: #fb923c; }
+
+    .speaker-pill {
+      font-family: var(--font-mono);
+      font-size: clamp(10px, 0.8vw, 11.5px);
+      color: var(--ink-muted);
+      background: var(--paper-2);
+      border: 1px solid var(--rule);
+      padding: 3px 9px;
+    }
+
+    .slide.dark .speaker-pill {
+      background: var(--slate-2);
+      border-color: var(--slate-rule);
+      color: #d6d3cd;
+    }
+
+    h1.cover-title {
+      font-family: var(--font-serif);
+      font-size: clamp(36px, 4.4vw, 62px);
+      line-height: 1.03;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #faf8f4;
+      max-width: 16ch;
+    }
+
+    h2.slide-title {
+      font-family: var(--font-serif);
+      font-size: clamp(24px, 2.55vw, 37px);
+      line-height: 1.12;
+      font-weight: 700;
+      letter-spacing: -0.015em;
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+
+    .body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      position: relative;
+      z-index: 2;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .grid-2-wide {
+      display: grid;
+      grid-template-columns: 1.3fr 0.7fr;
+      gap: 22px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      padding: 18px 22px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .panel.tinted { background: var(--paper-2); }
+    .panel.accent-left { border-left: 4px solid var(--ember); }
+    .panel.forest-left { border-left: 4px solid var(--forest); }
+
+    .slide.dark .panel {
+      background: var(--slate-2);
+      border-color: var(--slate-rule);
+    }
+
+    .panel-title {
+      font-family: var(--font-mono);
+      font-size: clamp(11px, 0.9vw, 13px);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink-muted);
+      margin-bottom: 10px;
+    }
+
+    .slide.dark .panel-title { color: #fdba74; }
+
+    .panel p, .panel li {
+      font-size: clamp(13.5px, 1.15vw, 17px);
+      line-height: 1.48;
+      color: #292524;
+    }
+
+    .slide.dark .panel p, .slide.dark .panel li { color: #e7e5e4; }
+
+    ul.clean {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+    }
+
+    ul.clean li {
+      padding-left: 16px;
+      position: relative;
+    }
+
+    ul.clean li::before {
+      content: "▪";
+      position: absolute;
+      left: 0;
+      color: var(--ember);
+    }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .kpi {
+      background: var(--surface);
+      border: 1px solid var(--rule);
+      padding: 18px 20px;
+    }
+
+    .kpi .val {
+      font-family: var(--font-mono);
+      font-size: clamp(24px, 2.7vw, 38px);
+      font-weight: 600;
+      color: var(--ember);
+      line-height: 1.05;
+    }
+
+    .kpi.forest .val { color: var(--forest); }
+
+    .kpi .lbl {
+      font-size: clamp(12px, 0.95vw, 14px);
+      color: var(--ink-muted);
+      margin-top: 6px;
+      line-height: 1.3;
+    }
+
+    .img-frame {
+      background: #0e100f;
+      border: 1px solid var(--slate-rule);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .img-frame img {
+      width: 100%;
+      height: auto;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .img-caption {
+      font-family: var(--font-mono);
+      font-size: clamp(10.5px, 0.85vw, 12.5px);
+      color: #d6d3cd;
+      margin-top: 8px;
+    }
+
+    /* Placeholder editorial para capturas del Frontend */
+    .capture-slot {
+      flex: 1;
+      border: 1.5px dashed #a8a29e;
+      background: var(--paper-2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .slide.dark .capture-slot {
+      background: #1d211f;
+      border-color: #57534e;
+    }
+
+    .capture-slot .slot-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--ember);
+      font-weight: 600;
+    }
+
+    .slide.dark .capture-slot .slot-tag { color: #fb923c; }
+
+    .capture-slot .slot-title {
+      font-weight: 600;
+      font-size: clamp(13px, 1.1vw, 16px);
+    }
+
+    .capture-slot .slot-file {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--ink-muted);
+    }
+
+    .slide.dark .capture-slot .slot-file { color: #a8a29e; }
+
+    .todo-pill {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: var(--ember-soft);
+      color: var(--ember-dark);
+      border: 1px solid #fdba74;
+      padding: 2px 7px;
+      font-weight: 600;
+    }
+
+    .slide-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 10px;
+      margin-top: 14px;
+      border-top: 1px solid var(--rule);
+      font-family: var(--font-mono);
+      font-size: clamp(10px, 0.78vw, 11.5px);
+      color: var(--ink-soft);
+      position: relative;
+      z-index: 2;
+      flex-shrink: 0;
+    }
+
+    .slide.dark .slide-foot {
+      border-top-color: var(--slate-rule);
+      color: #8b867e;
+    }
+
+    .controls {
+      position: fixed;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(23, 25, 24, 0.92);
+      border: 1px solid #353b38;
+      padding: 5px 12px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: #d6d3cd;
+      z-index: 100;
+    }
+
+    .controls button {
+      background: transparent;
+      border: 1px solid #444b47;
+      color: #f3f1eb;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .controls button:hover {
+      background: var(--ember);
+      border-color: var(--ember);
+    }
+
+    .progress-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: var(--ember);
+      transition: width 0.25s ease;
+      z-index: 10;
+    }
+
+    @media print {
+      @page { size: 13.333in 7.5in; margin: 0; }
+      html, body { background: #ffffff; overflow: visible; height: auto; }
+      .stage { display: block; padding: 0; height: auto; }
+      .deck { width: 100%; height: auto; box-shadow: none; overflow: visible; }
+      .slide {
+        position: relative;
+        display: flex !important;
+        width: 13.333in;
+        height: 7.5in;
+        page-break-after: always;
+        break-after: page;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .controls, .progress-bar { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="deck" id="deck">
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 1: PORTADA                                                 -->
+      <!-- ================================================================ -->
+      <section class="slide dark active">
+        <svg viewBox="0 0 1200 675" style="position:absolute; inset:0; width:100%; height:100%; opacity:0.22; pointer-events:none;" preserveAspectRatio="xMidYMid slice">
+          <g fill="none" stroke="#c2410c" stroke-width="1.2">
+            <path d="M780,-40 C860,90 730,180 840,300 C950,420 820,560 980,710" />
+            <path d="M830,-40 C920,100 790,190 900,310 C1010,430 880,560 1040,710" />
+            <path d="M880,-40 C980,110 850,200 960,320 C1070,440 940,570 1100,710" />
+            <path d="M930,-40 C1040,120 910,210 1020,330 C1130,450 1000,580 1160,710" />
+            <circle cx="980" cy="340" r="145" stroke-dasharray="4 6" stroke="#fb923c" />
+            <circle cx="980" cy="340" r="85" stroke="#fb923c" />
+            <circle cx="980" cy="340" r="32" stroke="#fdba74" />
+          </g>
+        </svg>
+
+        <div class="slide-top">
+          <span class="kicker">TEL328 · Proyecto Parte 2</span>
+          <span class="speaker-pill">Bloque 1/4 · Modelo</span>
+        </div>
+
+        <div class="body" style="justify-content:center; gap:22px;">
+          <div style="font-family:var(--font-mono); font-size:clamp(11px,0.9vw,13px); color:#a8a29e; letter-spacing:0.06em;">
+            INCENDIOS FORESTALES · DATOS SATELITALES ABIERTOS
+          </div>
+
+          <h1 class="cover-title">Burn Scar<br/>Prediction Model</h1>
+
+          <p style="font-size:clamp(15px,1.4vw,20px); color:#d6d3cd; max-width:48ch; line-height:1.45;">
+            Predicción del <strong style="color:#fdba74;">avance de incendios forestales</strong> y plataforma web de visualización.
+          </p>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-top:20px; max-width:780px;">
+            <div style="border-top:2.5px solid #c2410c; padding-top:10px;">
+              <div style="font-family:var(--font-mono); font-size:11px; color:#fb923c; margin-bottom:6px;">EQUIPO MODELO &amp; DATOS</div>
+              <div style="font-size:15px; color:#f3f1eb;">Antonio Troncoso · Sebastian Torres</div>
+            </div>
+            <div style="border-top:2.5px solid #4ade80; padding-top:10px;">
+              <div style="font-family:var(--font-mono); font-size:11px; color:#86efac; margin-bottom:6px;">EQUIPO FRONTEND &amp; PLATAFORMA</div>
+              <div style="font-size:15px; color:#f3f1eb;">Alex Espinosa · Eduardo Canales</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>burn-scar-prediction-model · TEL328</span>
+          <span>01 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 2: EL PROBLEMA (LENGUAJE SIMPLE)                           -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">01 · El Problema</span>
+          <span class="speaker-pill">Integrante 1 · Modelo</span>
+        </div>
+
+        <h2 class="slide-title">¿Dónde ya ardió vs. hacia dónde avanza el fuego?</h2>
+
+        <div class="body" style="gap:18px; justify-content:center;">
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-title">Lo que normalmente se hace</div>
+              <p style="font-size:clamp(16px,1.4vw,20px); font-weight:600; margin-bottom:8px;">Detectar la cicatriz</p>
+              <p>Mirar una foto satelital y marcar <strong>dónde ya se quemó</strong>. Eso describe el pasado.</p>
+            </div>
+
+            <div class="panel accent-left" style="background:#fffaf5;">
+              <div class="panel-title" style="color:var(--ember-dark);">Lo que hace nuestro proyecto</div>
+              <p style="font-size:clamp(16px,1.4vw,20px); font-weight:600; margin-bottom:8px;">Predecir el avance</p>
+              <p>Dado el estado actual del incendio, estimar <strong>dónde es probable que arda</strong> en los próximos días.</p>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel-title">Qué usa el modelo (100% abierto)</div>
+              <ul class="clean">
+                <li><strong>Imágenes satelitales</strong> (Sentinel-3, cada ~2 días).</li>
+                <li><strong>Mapa de terreno y vegetación</strong> (relieve + tipo de suelo).</li>
+                <li><strong>Horizonte:</strong> cuántos días a futuro se pregunta.</li>
+              </ul>
+            </div>
+
+            <div class="panel tinted forest-left">
+              <div class="panel-title">Límite importante de esta versión</div>
+              <p>Una imagen satelital muestra el terreno, pero <strong>no ve el viento ni la humedad</strong>. En v1 probamos cuánto se puede predecir solo con imagen + terreno.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Región Mediterránea · Datos abiertos Copernicus</span>
+          <span>02 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 3: DATOS Y CUIDADO CONTRA TRAMPAS                          -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">01 · Datos &amp; Calidad</span>
+          <span class="speaker-pill">Integrante 1 · Modelo</span>
+        </div>
+
+        <h2 class="slide-title">Por qué 300 m y cómo evitamos "hacer trampa"</h2>
+
+        <div class="body grid-2">
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div class="panel accent-left" style="flex:1;">
+              <div class="panel-title">El dilema del satélite</div>
+              <ul class="clean">
+                <li>Un incendio típico dura <strong>~4 días</strong>.</li>
+                <li>Satélites de mucho detalle (10 m) pasan cada <strong>5–6 días</strong> → no alcanzan a ver el avance.</li>
+                <li><strong>Sentinel-3 (300 m)</strong> pasa cada <strong>~2 días</strong> → captura 2 a 3 fotos por incendio.</li>
+              </ul>
+            </div>
+
+            <div class="panel tinted">
+              <div class="panel-title">Evaluación independiente</div>
+              <p>Medimos contra mapas hechos por <strong>analistas humanos (Copernicus CEMS)</strong>, nunca contra algoritmos del mismo satélite.</p>
+            </div>
+          </div>
+
+          <div class="panel" style="gap:14px;">
+            <div class="panel-title">Limpieza del dataset (sin fuga de datos)</div>
+            <svg viewBox="0 0 430 250" style="width:100%; height:auto;">
+              <rect x="10" y="6" width="410" height="44" fill="#ede8dd" stroke="#d6cfc2" />
+              <text x="22" y="26" font-family="IBM Plex Mono" font-size="13.5" font-weight="600" fill="#1a1917">96 incendios reales (2023–2026)</text>
+              <text x="22" y="42" font-family="IBM Plex Sans" font-size="11.5" fill="#57534e">Incendios del Mediterráneo con varias rondas</text>
+
+              <path d="M215,50 L215,74" stroke="#78716c" stroke-width="1.5" />
+              <rect x="235" y="54" width="185" height="24" fill="#ffedd5" stroke="#fdba74" />
+              <text x="245" y="70" font-family="IBM Plex Mono" font-size="11" font-weight="600" fill="#9a3412">−50 ya vistos por modelo base</text>
+
+              <rect x="40" y="88" width="350" height="44" fill="#ffffff" stroke="#c2410c" stroke-width="1.5" />
+              <text x="54" y="108" font-family="IBM Plex Mono" font-size="13.5" font-weight="600" fill="#9a3412">46 incendios limpios</text>
+              <text x="54" y="124" font-family="IBM Plex Sans" font-size="11.5" fill="#57534e">Sin memorización previa ni fuga</text>
+
+              <path d="M215,132 L215,156" stroke="#78716c" stroke-width="1.5" />
+              <rect x="235" y="136" width="185" height="24" fill="#f6f3ec" stroke="#d6cfc2" />
+              <text x="245" y="152" font-family="IBM Plex Mono" font-size="11" fill="#57534e">−6 con datos incompletos</text>
+
+              <rect x="65" y="170" width="300" height="62" fill="#e6f0e9" stroke="#2d5a3d" stroke-width="1.5" />
+              <text x="80" y="195" font-family="IBM Plex Mono" font-size="14" font-weight="600" fill="#2d5a3d">40 incendios · 296 muestras</text>
+              <text x="80" y="216" font-family="IBM Plex Sans" font-size="12" fill="#2d5a3d">33 entrenamiento (CV) + 7 prueba final</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Separación geográfica estricta: incendios vecinos nunca se mezclan</span>
+          <span>03 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 4: CÓMO FUNCIONA EL MODELO (INTUITIVO)                     -->
+      <!-- ================================================================ -->
+      <section class="slide dark">
+        <div class="slide-top">
+          <span class="kicker">02 · Cómo Funciona el Modelo</span>
+          <span class="speaker-pill">Integrante 2 · Modelo</span>
+        </div>
+
+        <h2 class="slide-title" style="color:#faf8f4;">Arquitectura compacta: secuencia + terreno → mapa</h2>
+
+        <div class="body" style="gap:20px; justify-content:center;">
+          <!-- Diagrama limpio en 3 pasos -->
+          <div style="background:#1c201e; border:1px solid #353b38; padding:20px;">
+            <svg viewBox="0 0 960 170" style="width:100%; height:auto;">
+              <!-- Paso 1 -->
+              <rect x="10" y="20" width="250" height="130" fill="#262b28" stroke="#fb923c" stroke-width="1.6" />
+              <text x="26" y="48" font-family="IBM Plex Mono" font-size="12" font-weight="600" fill="#fb923c">1. CONTEXTO TEMPORAL</text>
+              <text x="26" y="76" font-family="IBM Plex Sans" font-size="15" font-weight="600" fill="#faf8f4">7 fotos satelitales</text>
+              <text x="26" y="98" font-family="IBM Plex Sans" font-size="12.5" fill="#d6d3cd">1 antes del fuego + 6 recientes</text>
+              <text x="26" y="128" font-family="IBM Plex Mono" font-size="11.5" fill="#fdba74">Encoder: ConvLSTM</text>
+
+              <path d="M260,85 L310,85" stroke="#fb923c" stroke-width="2" />
+              <polygon points="310,79 322,85 310,91" fill="#fb923c" />
+
+              <!-- Paso 2 -->
+              <rect x="324" y="20" width="290" height="130" fill="#2c241e" stroke="#c2410c" stroke-width="1.8" />
+              <text x="340" y="48" font-family="IBM Plex Mono" font-size="12" font-weight="600" fill="#fdba74">2. FUSIÓN + RED ESPACIAL</text>
+              <text x="340" y="76" font-family="IBM Plex Sans" font-size="15" font-weight="600" fill="#faf8f4">Terreno + Cicatriz + Días</text>
+              <text x="340" y="98" font-family="IBM Plex Sans" font-size="12.5" fill="#d6d3cd">Relieve, vegetación y horizonte h</text>
+              <text x="340" y="128" font-family="IBM Plex Mono" font-size="11.5" fill="#fdba74">Decoder: MiniSegFormer (~780k)</text>
+
+              <path d="M614,85 L664,85" stroke="#4ade80" stroke-width="2" />
+              <polygon points="664,79 676,85 664,91" fill="#4ade80" />
+
+              <!-- Paso 3 -->
+              <rect x="678" y="20" width="270" height="130" fill="#1e3126" stroke="#4ade80" stroke-width="1.6" />
+              <text x="694" y="48" font-family="IBM Plex Mono" font-size="12" font-weight="600" fill="#86efac">3. SALIDA DEL MODELO</text>
+              <text x="694" y="76" font-family="IBM Plex Sans" font-size="15" font-weight="600" fill="#faf8f4">Mapa de riesgo</text>
+              <text x="694" y="98" font-family="IBM Plex Sans" font-size="12.5" fill="#d6d3cd">Probabilidad de nueva quema</text>
+              <text x="694" y="128" font-family="IBM Plex Mono" font-size="11.5" fill="#86efac">Grilla 64×64 (~19×19 km)</text>
+            </svg>
+          </div>
+
+          <div class="grid-3">
+            <div class="panel">
+              <div class="panel-title">Modelo liviano</div>
+              <p><strong>~780 mil parámetros</strong>: evita memorizar cuando hay pocos incendios.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Cicatriz automática</div>
+              <p>Un modelo auxiliar congelado (<strong>TMB-S3</strong>) estima la cicatriz actual sin ayuda manual.</p>
+            </div>
+            <div class="panel">
+              <div class="panel-title">Validación estricta</div>
+              <p>Validación cruzada (5 grupos) y umbral fijado antes de mirar el test final.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Entrenamiento completo: ~2 minutos en GPU</span>
+          <span>04 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 5: RESULTADOS SIMPLIFICADOS                                -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">02 · Resultados (Prueba Final · 7 incendios nuevos)</span>
+          <span class="speaker-pill">Integrante 2 · Modelo</span>
+        </div>
+
+        <h2 class="slide-title">El modelo duplica el desempeño del baseline geométrico</h2>
+
+        <div class="body grid-2-wide">
+          <div class="panel" style="padding:16px 18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <span class="panel-title" style="margin:0;">Comparación F1 (%) — Test final</span>
+              <div style="display:flex; gap:14px; font-family:var(--font-mono); font-size:11px;">
+                <span><span style="display:inline-block;width:10px;height:10px;background:#2d5a3d;margin-right:5px;"></span>Crecimiento real puro</span>
+                <span><span style="display:inline-block;width:10px;height:10px;background:#c2410c;margin-right:5px;"></span>Etiqueta de entrenamiento</span>
+              </div>
+            </div>
+
+            <svg viewBox="0 0 540 245" style="width:100%; height:auto;">
+              <g stroke="#e5dfd3" stroke-width="1">
+                <line x1="185" y1="10" x2="185" y2="220" stroke="#a8a29e" />
+                <line x1="265" y1="10" x2="265" y2="220" stroke-dasharray="3 3" />
+                <line x1="345" y1="10" x2="345" y2="220" stroke-dasharray="3 3" />
+                <line x1="425" y1="10" x2="425" y2="220" stroke-dasharray="3 3" />
+                <line x1="505" y1="10" x2="505" y2="220" stroke-dasharray="3 3" />
+              </g>
+              <g font-family="IBM Plex Mono" font-size="10.5" fill="#78716c" text-anchor="middle">
+                <text x="185" y="236">0%</text>
+                <text x="265" y="236">10%</text>
+                <text x="345" y="236">20%</text>
+                <text x="425" y="236">30%</text>
+                <text x="505" y="236">40%</text>
+              </g>
+
+              <!-- 1. Dilatación simple -->
+              <text x="176" y="38" font-family="IBM Plex Sans" font-size="12.5" fill="#57534e" text-anchor="end">Dilatación simple (baseline)</text>
+              <rect x="185" y="18" width="58" height="14" fill="#6b9478" />
+              <text x="249" y="29" font-family="IBM Plex Mono" font-size="11" fill="#2d5a3d">7,3%</text>
+              <rect x="185" y="34" width="128" height="14" fill="#d97757" />
+              <text x="319" y="45" font-family="IBM Plex Mono" font-size="11" fill="#57534e">15,9%</text>
+
+              <!-- 2. Preentrenado cero-disparo -->
+              <text x="176" y="92" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#1a1917" text-anchor="end">Preentrenado (sin CEMS)</text>
+              <rect x="185" y="72" width="85" height="14" fill="#2d5a3d" opacity="0.85" />
+              <text x="276" y="83" font-family="IBM Plex Mono" font-size="11" fill="#2d5a3d">10,6%</text>
+              <rect x="185" y="88" width="158" height="14" fill="#c2410c" opacity="0.8" />
+              <text x="349" y="99" font-family="IBM Plex Mono" font-size="11" fill="#1a1917">19,7%</text>
+
+              <!-- 3. Ajuste + control falsas alarmas -->
+              <text x="176" y="146" font-family="IBM Plex Sans" font-size="12.5" font-weight="600" fill="#1a1917" text-anchor="end">Ajustado + Tversky</text>
+              <rect x="185" y="126" width="81" height="14" fill="#2d5a3d" opacity="0.85" />
+              <text x="272" y="137" font-family="IBM Plex Mono" font-size="11" fill="#2d5a3d">10,1%</text>
+              <rect x="185" y="142" width="263" height="14" fill="#c2410c" opacity="0.9" />
+              <text x="454" y="153" font-family="IBM Plex Mono" font-size="11" fill="#1a1917">32,9%</text>
+
+              <!-- 4. Producción -->
+              <rect x="4" y="172" width="532" height="44" fill="#fff7ed" />
+              <text x="176" y="198" font-family="IBM Plex Sans" font-size="13" font-weight="700" fill="#9a3412" text-anchor="end">Modelo final ★</text>
+              <rect x="185" y="178" width="117" height="15" fill="#2d5a3d" />
+              <text x="308" y="190" font-family="IBM Plex Mono" font-size="11.5" font-weight="700" fill="#2d5a3d">14,7%</text>
+              <rect x="185" y="195" width="292" height="15" fill="#c2410c" />
+              <text x="483" y="207" font-family="IBM Plex Mono" font-size="11.5" font-weight="700" fill="#9a3412">36,5%</text>
+            </svg>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div class="panel forest-left" style="flex:1;">
+              <div class="panel-title">¿Por qué dos barras?</div>
+              <p>La barra verde (<strong>14,7%</strong>) mide solo el <strong>avance nuevo real</strong>: es la métrica más exigente y honesta.</p>
+            </div>
+
+            <div class="panel accent-left" style="flex:1;">
+              <div class="panel-title">Hallazgo clave</div>
+              <ul class="clean">
+                <li><strong>2× mejor</strong> que expandir el borde a ciegas.</li>
+                <li>La variante Tversky reduce falsas alarmas (<strong>39,5% precisión</strong>).</li>
+                <li>Elegir bien el <strong>umbral de alerta</strong> impacta tanto como el modelo.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Todos comparados al mismo umbral (0,10) sobre los mismos incendios</span>
+          <span>05 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 6: ANÁLISIS VISUAL (ACIERTO VS FALLO)                      -->
+      <!-- ================================================================ -->
+      <section class="slide dark">
+        <div class="slide-top">
+          <span class="kicker">02 · Resultados Visuales</span>
+          <span class="speaker-pill">Integrante 2 · Modelo</span>
+        </div>
+
+        <h2 class="slide-title" style="color:#faf8f4; margin-bottom:12px;">El modelo en acción: acierto vs. fallo honesto</h2>
+
+        <div class="body" style="gap:14px;">
+          <div class="img-frame" style="flex:1;">
+            <img src="../outputs/vis_tversky_mpw5_fold0/best_01_idx028_EMSR898_AOI02_h3d_f1_063.png" alt="Mejor predicción" />
+            <div class="img-caption">
+              <strong style="color:#4ade80;">ACIERTO (3 días):</strong> el mapa predice bien hacia dónde avanza el frente (<span style="color:#4ade80;">verde</span> = acierto).
+            </div>
+          </div>
+
+          <div class="img-frame" style="flex:1;">
+            <img src="../outputs/vis_tversky_mpw5_fold0/worst_01_idx025_EMSR898_AOI01_h0d_f1_001.png" alt="Fallo honesto" />
+            <div class="img-caption">
+              <strong style="color:#f87171;">FALLO HONESTO:</strong> sin datos de viento, predice falsa alarma (<span style="color:#f87171;">rojo</span>) y omite el avance (<span style="color:#facc15;">amarillo</span>).
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Izq. a der.: Foto satelital · Cicatriz actual · Avance real · Predicción · Comparación</span>
+          <span>06 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 7: FRONTEND — PROPÓSITO Y STACK (INTEGRANTE 3)             -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">03 · Plataforma Web (Frontend)</span>
+          <span class="speaker-pill">Integrante 3 · Frontend</span>
+        </div>
+
+        <h2 class="slide-title">Llevar las predicciones a un mapa interactivo</h2>
+
+        <div class="body grid-2">
+          <div class="panel accent-left">
+            <div class="panel-title">¿Por qué construir una interfaz web?</div>
+            <ul class="clean">
+              <li>El modelo genera matrices de probabilidad difíciles de leer en consola.</li>
+              <li>El frontend permite <strong>explorar incendios en un mapa</strong> sin tocar código.</li>
+              <li>Facilita comparar escenarios cambiando horizonte y sensibilidad.</li>
+            </ul>
+          </div>
+
+          <div class="panel tinted">
+            <div class="panel-title">Tecnologías utilizadas <span class="todo-pill">Completar Front</span></div>
+            <ul class="clean">
+              <li><strong>Framework web:</strong> [ej. React / Vue / Next.js]</li>
+              <li><strong>Motor de mapas:</strong> [ej. Leaflet / Mapbox / OpenLayers]</li>
+              <li><strong>Conexión API:</strong> [ej. FastAPI / REST JSON / GeoJSON]</li>
+              <li><strong>Estilos / UI:</strong> [ej. TailwindCSS / CSS Modules]</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Equipo Frontend · Diseño orientado al usuario final</span>
+          <span>07 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 8: INTEGRACIÓN MODELO <-> FRONTEND                         -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">03 · Arquitectura de la Aplicación</span>
+          <span class="speaker-pill">Integrante 3 · Frontend</span>
+        </div>
+
+        <h2 class="slide-title">Cómo se conecta la interfaz con el modelo</h2>
+
+        <div class="body" style="gap:20px; justify-content:center;">
+          <div class="panel" style="padding:20px;">
+            <svg viewBox="0 0 940 160" style="width:100%; height:auto;">
+              <!-- Usuario / Front -->
+              <rect x="10" y="18" width="265" height="124" fill="#ffffff" stroke="#c2410c" stroke-width="1.8" />
+              <text x="26" y="45" font-family="IBM Plex Mono" font-size="11.5" font-weight="600" fill="#c2410c">1. INTERFAZ WEB</text>
+              <text x="26" y="73" font-family="IBM Plex Sans" font-size="15" font-weight="600" fill="#1a1917">Selección del usuario</text>
+              <text x="26" y="96" font-family="IBM Plex Sans" font-size="12.5" fill="#57534e">• Zona / incendio</text>
+              <text x="26" y="116" font-family="IBM Plex Sans" font-size="12.5" fill="#57534e">• Días a futuro (h) y umbral</text>
+
+              <path d="M275,80 L325,80" stroke="#c2410c" stroke-width="2" />
+              <polygon points="325,74 337,80 325,86" fill="#c2410c" />
+
+              <!-- Backend / API -->
+              <rect x="339" y="18" width="260" height="124" fill="#ede8dd" stroke="#78716c" stroke-width="1.5" />
+              <text x="355" y="45" font-family="IBM Plex Mono" font-size="11.5" font-weight="600" fill="#57534e">2. BACKEND / MODELO</text>
+              <text x="355" y="73" font-family="IBM Plex Sans" font-size="15" font-weight="600" fill="#1a1917">Inferencia PyTorch</text>
+              <text x="355" y="96" font-family="IBM Plex Sans" font-size="12.5" fill="#57534e">• Ejecuta el modelo entrenado</text>
+              <text x="355" y="116" font-family="IBM Plex Sans" font-size="12.5" fill="#57534e">• Devuelve mapa + métricas</text>
+
+              <path d="M599,80 L649,80" stroke="#2d5a3d" stroke-width="2" />
+              <polygon points="649,74 661,80 649,86" fill="#2d5a3d" />
+
+              <!-- Mapa resultado -->
+              <rect x="663" y="18" width="265" height="124" fill="#e6f0e9" stroke="#2d5a3d" stroke-width="1.8" />
+              <text x="679" y="45" font-family="IBM Plex Mono" font-size="11.5" font-weight="600" fill="#2d5a3d">3. VISUALIZACIÓN</text>
+              <text x="679" y="73" font-family="IBM Plex Sans" font-size="15" font-weight="600" fill="#1a1917">Capas en el mapa</text>
+              <text x="679" y="96" font-family="IBM Plex Sans" font-size="12.5" fill="#2d5a3d">• Mapa de calor / riesgo</text>
+              <text x="679" y="116" font-family="IBM Plex Sans" font-size="12.5" fill="#2d5a3d">• Leyenda e indicadores</text>
+            </svg>
+          </div>
+
+          <div class="grid-3">
+            <div class="panel tinted">
+              <div class="panel-title">Flujo simple</div>
+              <p>Elegir evento → configurar horizonte → visualizar predicción.</p>
+            </div>
+            <div class="panel tinted">
+              <div class="panel-title">Capas superpuestas</div>
+              <p>Permite activar/desactivar cicatriz inicial y mapa de probabilidad.</p>
+            </div>
+            <div class="panel tinted">
+              <div class="panel-title">Feedback inmediato</div>
+              <p>Ajustar el umbral muestra cómo cambia la zona de alerta.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Flujo extremo a extremo · Modelo ↔ Interfaz</span>
+          <span>08 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 9: VISTAS DEL FRONTEND (CAPTURAS 07 Y 08)                  -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">03 · Interfaz de Usuario</span>
+          <span class="speaker-pill">Integrante 3 · Frontend</span>
+        </div>
+
+        <h2 class="slide-title">Vista principal y configuración de parámetros</h2>
+
+        <div class="body grid-2">
+          <!-- Cuando tengan captura_07.png, reemplazar este bloque por <div class="img-frame"><img src="capturas_html/captura_07.png" /></div> -->
+          <div class="capture-slot">
+            <span class="slot-tag">Captura Frontend #1</span>
+            <div class="slot-title">Vista principal del mapa</div>
+            <p style="font-size:13px; color:var(--ink-muted); max-width:34ch;">Pantalla inicial con el mapa base y el listado/selector de incendios.</p>
+            <div class="slot-file">docs/capturas_html/captura_07.png</div>
+          </div>
+
+          <!-- Cuando tengan captura_08.png, reemplazar este bloque por <div class="img-frame"><img src="capturas_html/captura_08.png" /></div> -->
+          <div class="capture-slot">
+            <span class="slot-tag">Captura Frontend #2</span>
+            <div class="slot-title">Panel de parámetros</div>
+            <p style="font-size:13px; color:var(--ink-muted); max-width:34ch;">Controles para elegir horizonte (días), umbral y capas visibles.</p>
+            <div class="slot-file">docs/capturas_html/captura_08.png</div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Mismas capturas que docs/manual_de_uso.html (Figuras 7 y 8)</span>
+          <span>09 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 10: RESULTADOS EN EL FRONTEND (INTEGRANTE 4)               -->
+      <!-- ================================================================ -->
+      <section class="slide dark">
+        <div class="slide-top">
+          <span class="kicker">04 · Visualización en Mapa</span>
+          <span class="speaker-pill">Integrante 4 · Frontend</span>
+        </div>
+
+        <h2 class="slide-title" style="color:#faf8f4;">Cómo se interpreta la predicción en pantalla</h2>
+
+        <div class="body grid-2-wide">
+          <!-- Cuando tengan captura_09.png, reemplazar este bloque por <div class="img-frame"><img src="capturas_html/captura_09.png" /></div> -->
+          <div class="capture-slot">
+            <span class="slot-tag">Captura Frontend #3</span>
+            <div class="slot-title" style="color:#f3f1eb;">Resultado desplegado sobre el mapa</div>
+            <p style="font-size:13px; color:#a8a29e; max-width:38ch;">Mapa con la capa de predicción activa, leyenda de riesgo y métricas del evento.</p>
+            <div class="slot-file">docs/capturas_html/captura_09.png</div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div class="panel" style="flex:1;">
+              <div class="panel-title">Qué ve el usuario</div>
+              <ul class="clean">
+                <li><strong>Zona ya quemada</strong> como referencia inicial.</li>
+                <li><strong>Mapa de probabilidad</strong> de avance futuro.</li>
+                <li><strong>Control de umbral</strong> para decidir qué se marca como alerta.</li>
+                <li><strong>[Completar Front]:</strong> métricas o exportación visible.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>docs/manual_de_uso.html (Figura 9)</span>
+          <span>10 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 11: DEMO EN VIVO (MODELO + FRONTEND)                       -->
+      <!-- ================================================================ -->
+      <section class="slide dark">
+        <div class="slide-top">
+          <span class="kicker">04 · Demostración en Vivo</span>
+          <span class="speaker-pill">Integrante 4 · Frontend + Modelo</span>
+        </div>
+
+        <h2 class="slide-title" style="color:#faf8f4;">Demo en vivo: del entrenamiento al mapa</h2>
+
+        <div class="body grid-2">
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <div class="panel" style="flex:1;">
+              <div class="panel-title">1. Respaldo del Modelo (~1 min)</div>
+              <ul class="clean">
+                <li>Verificación de resultados y comparación con baselines en consola.</li>
+                <li>Curvas de entrenamiento en <strong>TensorBoard</strong>.</li>
+              </ul>
+            </div>
+
+            <div class="panel" style="flex:1; border-left:4px solid #4ade80;">
+              <div class="panel-title" style="color:#86efac;">2. Plataforma Web en Vivo (~2 min)</div>
+              <ul class="clean">
+                <li>Seleccionar un incendio real en el mapa.</li>
+                <li>Cambiar el horizonte de días y el umbral.</li>
+                <li>Inspeccionar la predicción generada.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px; min-height:0;">
+            <div class="img-frame" style="flex:1;">
+              <img src="capturas_html/captura_05.png" alt="TensorBoard" />
+              <div class="img-caption">TensorBoard: seguimiento del entrenamiento por fold.</div>
+            </div>
+            <div class="img-frame" style="flex:1;">
+              <img src="capturas_html/captura_04.png" alt="Evaluación en terminal" />
+              <div class="img-caption">Consola: entrenamiento y evaluación final reproducible.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="slide-foot">
+          <span>Demo completa · Backend/Modelo + Interfaz Web</span>
+          <span>11 / 12</span>
+        </div>
+      </section>
+
+      <!-- ================================================================ -->
+      <!-- SLIDE 12: CONCLUSIONES Y FUTURO                                  -->
+      <!-- ================================================================ -->
+      <section class="slide">
+        <div class="slide-top">
+          <span class="kicker">04 · Cierre</span>
+          <span class="speaker-pill">Integrante 4 · Cierre</span>
+        </div>
+
+        <h2 class="slide-title">Lo que logramos y hacia dónde sigue</h2>
+
+        <div class="body grid-2">
+          <div class="panel forest-left">
+            <div class="panel-title">Logros de v1</div>
+            <ul class="clean">
+              <li>Pipeline completo con <strong>datos satelitales abiertos</strong> y sin fuga de datos.</li>
+              <li>El modelo <strong>duplica al baseline</strong> en crecimiento real (14,7% vs 7,3%).</li>
+              <li><strong>Interfaz web funcional</strong> para visualizar predicciones en mapa.</li>
+            </ul>
+          </div>
+
+          <div class="panel accent-left">
+            <div class="panel-title">Próximos pasos (v2)</div>
+            <ul class="clean">
+              <li>Incorporar <strong>viento y meteorología</strong> (factor clave del fuego).</li>
+              <li>Ampliar la base con <strong>más incendios históricos</strong> (+66 series).</li>
+              <li>Sumar más herramientas de comparación en el frontend.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; padding:14px 20px; background:var(--slate); color:#f3f1eb; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-family:var(--font-serif); font-size:clamp(18px,1.6vw,23px);">
+            ¿Preguntas? — <span style="color:#fdba74;">Burn Scar Prediction Model</span>
+          </span>
+          <span style="font-family:var(--font-mono); font-size:12px; color:#a8a29e;">
+            TEL328 · Gracias por su atención
+          </span>
+        </div>
+
+        <div class="slide-foot">
+          <span>burn-scar-prediction-model</span>
+          <span>12 / 12</span>
+        </div>
+      </section>
+
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="prevBtn" title="Anterior (←)">←</button>
+    <span id="counter">01 / 12</span>
+    <button id="nextBtn" title="Siguiente (→)">→</button>
+    <button id="fsBtn" title="Pantalla completa (F)">Pantalla completa</button>
+    <button id="printBtn" title="Exportar a PDF">PDF</button>
+  </div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const counter = document.getElementById('counter');
+    const progressBar = document.getElementById('progressBar');
+    let current = 0;
+
+    function showSlide(index) {
+      current = (index + slides.length) % slides.length;
+      slides.forEach((s, i) => s.classList.toggle('active', i === current));
+      counter.textContent = `${String(current + 1).padStart(2, '0')} / ${String(slides.length).padStart(2, '0')}`;
+      progressBar.style.width = `${((current + 1) / slides.length) * 100}%`;
+    }
+
+    document.getElementById('prevBtn').addEventListener('click', () => showSlide(current - 1));
+    document.getElementById('nextBtn').addEventListener('click', () => showSlide(current + 1));
+    document.getElementById('printBtn').addEventListener('click', () => window.print());
+    document.getElementById('fsBtn').addEventListener('click', () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+      else document.exitFullscreen?.();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        showSlide(current + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        showSlide(current - 1);
+      } else if (e.key === 'Home') showSlide(0);
+      else if (e.key === 'End') showSlide(slides.length - 1);
+      else if (e.key.toLowerCase() === 'f') {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      }
+    });
+
+    showSlide(0);
+  </script>
+</body>
+</html>
