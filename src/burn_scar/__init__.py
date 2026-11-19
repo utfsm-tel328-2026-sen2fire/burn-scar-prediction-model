@@ -1,8 +1,8 @@
 """Paquete principal para predicción de crecimiento de cicatrices de incendio."""
 
 from burn_scar.baselines import (
-    BaselineB0Persistence,
-    BaselineB1RadialDilation,
+    BaselinePersistence,
+    BaselineRadialDilation,
     compute_metrics_numpy,
 )
 from burn_scar.dataset import (
@@ -17,7 +17,7 @@ __all__ = [
     "build_temporal_window",
     "get_cv_dataloaders",
     "match_frame_key",
-    "BaselineB0Persistence",
-    "BaselineB1RadialDilation",
+    "BaselinePersistence",
+    "BaselineRadialDilation",
     "compute_metrics_numpy",
 ]

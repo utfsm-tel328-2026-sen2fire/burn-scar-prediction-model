@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Evaluación de Modelos de Referencia (Baselines B0 y B1) sobre los 5 Folds de CV.
+Evaluación de Modelos de Referencia (baselines) sobre los 5 Folds de CV.
 
-Evalúa los baselines B0 (Persistencia) y B1 (Dilatación Radial) sobre las muestras
+Evalúa los baselines BASE-0 (Persistencia) y BASE-1 (Dilatación Radial) sobre las muestras
 reales del dataset en píxeles válidos (mask == 1) promediando por evento (docs/dataset.md §10).
 
 Informa además del trivial "todo quemado" y de las métricas contra el target de
@@ -24,8 +24,8 @@ import numpy as np
 
 from burn_scar.baselines import (
     BaselineAllBurned,
-    BaselineB0Persistence,
-    BaselineB1RadialDilation,
+    BaselinePersistence,
+    BaselineRadialDilation,
     aggregate_series_metrics,
     compact_series_metrics,
     compute_metrics_numpy,
@@ -209,7 +209,7 @@ def _pct(value: float) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Evaluación de Baselines B0/B1")
+    parser = argparse.ArgumentParser(description="Evaluación de los baselines BASE-0/BASE-1")
     parser.add_argument("--index", default="data/processed/dataset_index.json")
     parser.add_argument(
         "--threshold",
@@ -303,8 +303,8 @@ def main() -> int:
     report: dict[str, object] = {"provenance": provenance, "sets": {}}
 
     models = [
-        (BaselineB0Persistence(), "B0: Persistencia (Cero Crecimiento)"),
-        (BaselineB1RadialDilation(growth_rate_km_per_day=0.6), "B1: Dilatación Radial Isótropa"),
+        (BaselinePersistence(), "BASE-0: Persistencia (Cero Crecimiento)"),
+        (BaselineRadialDilation(growth_rate_km_per_day=0.6), "BASE-1: Dilatación Radial Isótropa"),
         (BaselineAllBurned(), "TRIVIAL: Todo quemado (escala mínima, no es un modelo)"),
     ]
 
@@ -358,7 +358,7 @@ def main() -> int:
                 print("  --- target de referencia: no disponible ---")
 
     print("\n" + "=" * 72)
-    print("✓ Baselines calculados. Cualquier red neuronal (M-A o M-B) debe superar B1.")
+    print("✓ Baselines calculados. Cualquier red neuronal (M-A o M-B) debe superar BASE-1.")
     print("  Los F1 de etiquetas distintas NO son comparables entre sí: cada uno se")
     print("  lee contra el trivial 'todo quemado' de su propia etiqueta.")
     print("=" * 72)

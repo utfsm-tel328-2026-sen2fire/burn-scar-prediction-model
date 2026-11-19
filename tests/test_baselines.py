@@ -7,8 +7,8 @@ import pytest
 
 from burn_scar.baselines import (
     BaselineAllBurned,
-    BaselineB0Persistence,
-    BaselineB1RadialDilation,
+    BaselinePersistence,
+    BaselineRadialDilation,
     aggregate_series_metrics,
     compute_metrics_numpy,
 )
@@ -76,13 +76,13 @@ def test_resolve_eval_threshold_error_si_falta_el_json(tmp_path: Path) -> None:
 
 
 def test_b0_persistence():
-    b0 = BaselineB0Persistence()
+    b0 = BaselinePersistence()
     scar = np.zeros((64, 64), dtype=np.float32)
     scar[20:30, 20:30] = 1.0
 
     pred = b0.predict(scar, horizon_days=3.0)
     assert pred.shape == (64, 64)
-    # B0 predice cero crecimiento
+    # BASE-0 predice cero crecimiento
     assert np.all(pred == 0.0)
 
 
@@ -98,7 +98,7 @@ def test_trivial_todo_quemado():
 
 
 def test_b1_radial_dilation():
-    b1 = BaselineB1RadialDilation(growth_rate_km_per_day=0.6)
+    b1 = BaselineRadialDilation(growth_rate_km_per_day=0.6)
     scar = np.zeros((64, 64), dtype=np.float32)
     scar[30:34, 30:34] = 1.0
 

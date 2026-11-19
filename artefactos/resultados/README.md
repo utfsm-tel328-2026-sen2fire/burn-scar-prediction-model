@@ -11,7 +11,7 @@ verificación (índices, umbral operativo y checkpoints del run publicado). Aqu�
 
 | Fichero | Qué es | Cómo se regenera |
 |---|---|---|
-| `baselines_canonicos_umbral_010.json` | B0, B1 y el trivial "todo quemado" sobre el dataset canónico (296 muestras), **umbral 0,10**, en validación y test | `uv run --extra rocm python scripts/evaluate_baselines.py --threshold 0.10 --output artefactos/resultados/baselines_canonicos_umbral_010.json` |
+| `baselines_canonicos_umbral_010.json` | BASE-0, BASE-1 y el trivial "todo quemado" sobre el dataset canónico (296 muestras), **umbral 0,10**, en validación y test | `uv run --extra rocm python scripts/evaluate_baselines.py --threshold 0.10 --output artefactos/resultados/baselines_canonicos_umbral_010.json` |
 | `baselines_canonicos_umbral_020.json` | Lo mismo al **umbral operativo 0,20** del run canónico | `uv run --extra rocm python scripts/evaluate_baselines.py --threshold 0.20 --output artefactos/resultados/baselines_canonicos_umbral_020.json` |
 | `integridad_dataset_produccion.json` | Auditoría del índice de producción: recuentos, horizontes, cobertura de cicatriz, errores | `uv run --extra rocm python scripts/audit_dataset_integrity.py --index data/processed/dataset_index.json --output artefactos/resultados/integridad_dataset_produccion.json` |
 | `integridad_dataset_referencia.json` | La misma auditoría sobre el dataset de etiqueta de referencia (CEMS) | `uv run --extra rocm python scripts/audit_dataset_integrity.py --index data/processed_target_cems/dataset_index.json --output artefactos/resultados/integridad_dataset_referencia.json` |
@@ -22,7 +22,7 @@ verificación (índices, umbral operativo y checkpoints del run publicado). Aqu�
 
 - **Los baselines son canónicos y reproducibles**: los dos JSON de baselines salen idénticos
   en cualquier máquina con el mismo dataset, y sus cifras coinciden con la tabla de
-  [`docs/operacion.md`](../../docs/operacion.md) §9 (B1 15,94 % / 7,30 % y trivial 16,29 % /
+  [`docs/operacion.md`](../../docs/operacion.md) §9 (BASE-1 15,94 % / 7,30 % y trivial 16,29 % /
   8,42 % en el test).
 - **Las filas de los modelos (M-A, M-B, M-B + Tversky y producción)** salen del run
   publicado, cuyo JSON de métricas vive en la máquina de origen y **no se versiona**: lo que

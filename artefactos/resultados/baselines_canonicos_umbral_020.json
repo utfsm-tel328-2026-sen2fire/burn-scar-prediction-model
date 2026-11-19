@@ -12,8 +12,8 @@
   },
   "sets": {
     "validation": {
-      "B0: Persistencia (Cero Crecimiento)": {
-        "model": "B0: Persistencia (Cero Crecimiento)",
+      "BASE-0: Persistencia (Cero Crecimiento)": {
+        "model": "BASE-0: Persistencia (Cero Crecimiento)",
         "n_series": 33,
         "n_series_evaluated": 33,
         "n_samples": 271,
@@ -140,8 +140,8 @@
           "warning": "El arranque en frío no está representado en el dataset evaluado."
         }
       },
-      "B1: Dilatación Radial Isótropa": {
-        "model": "B1: Dilatación Radial Isótropa",
+      "BASE-1: Dilatación Radial Isótropa": {
+        "model": "BASE-1: Dilatación Radial Isótropa",
         "n_series": 33,
         "n_series_evaluated": 33,
         "n_samples": 271,
@@ -398,8 +398,8 @@
       }
     },
     "test": {
-      "B0: Persistencia (Cero Crecimiento)": {
-        "model": "B0: Persistencia (Cero Crecimiento)",
+      "BASE-0: Persistencia (Cero Crecimiento)": {
+        "model": "BASE-0: Persistencia (Cero Crecimiento)",
         "n_series": 7,
         "n_series_evaluated": 7,
         "n_samples": 25,
@@ -482,8 +482,8 @@
           "warning": "El arranque en frío no está representado en el dataset evaluado."
         }
       },
-      "B1: Dilatación Radial Isótropa": {
-        "model": "B1: Dilatación Radial Isótropa",
+      "BASE-1: Dilatación Radial Isótropa": {
+        "model": "BASE-1: Dilatación Radial Isótropa",
         "n_series": 7,
         "n_series_evaluated": 7,
         "n_samples": 25,

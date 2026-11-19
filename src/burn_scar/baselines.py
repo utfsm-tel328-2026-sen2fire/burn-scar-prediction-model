@@ -1,9 +1,14 @@
 """
-Modelos de Referencia (Baselines B0 y B1) y Métricas de Evaluación.
+Modelos de Referencia (baselines) y Métricas de Evaluación.
 
 Implementa los baselines sin aprendizaje automático estipulados en docs/dataset.md §9:
-- B0 (Persistencia): el fuego no crece (delta = 0).
-- B1 (Dilatación radial): el frente avanza de forma isótropa.
+- Persistencia (BASE-0): el fuego no crece (delta = 0).
+- Dilatación radial (BASE-1): el frente avanza de forma isótropa.
+- Todo quemado: la escala mínima de cada etiqueta.
+
+Los códigos BASE-n son los de la documentación. Las clases de aquí no los llevan:
+- las decisiones de diseño se numeran B1-B13 (docs/decisiones.md §1.1) y son otra
+  serie, que no debe confundirse con esta.
 - Métricas oficiales de evaluación: F1 score, IoU, Precision, Recall calculados
   exclusivamente en píxeles válidos (mask == 1) y promediados por evento (D3, docs/dataset.md §10).
 """
@@ -129,8 +134,8 @@ def aggregate_series_metrics(series_metrics: dict[str, list[dict[str, float]]]) 
 
 
 
-class BaselineB0Persistence:
-    """B0: El fuego no crece (predice delta = 0 en todo el mapa)."""
+class BaselinePersistence:
+    """BASE-0: El fuego no crece (predice delta = 0 en todo el mapa)."""
 
     def predict(
         self, x_scar: Tensor | np.ndarray, horizon_days: float | Tensor = 1.0
@@ -160,8 +165,8 @@ class BaselineAllBurned:
         return np.ones_like(x_scar, dtype=np.float32)
 
 
-class BaselineB1RadialDilation:
-    """B1: Dilatación radial isótropa de la cicatriz previa según el horizonte h."""
+class BaselineRadialDilation:
+    """BASE-1: Dilatación radial isótropa de la cicatriz previa según el horizonte h."""
     def __init__(self, growth_rate_km_per_day: float = 0.6) -> None:
         self.rate_px_per_day = (growth_rate_km_per_day / 0.3)  # a 300 m/px -> 2 px/día
 

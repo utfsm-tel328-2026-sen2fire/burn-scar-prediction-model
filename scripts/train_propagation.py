@@ -37,7 +37,7 @@ from burn_scar.quality import (
 from burn_scar.tracking import ExperimentTracker
 
 # Umbrales evaluados en validación: un modelo probabilístico desbalanceado
-# raramente opera en 0,5, y los baselines B0/B1 no tienen umbral (son binarios).
+# raramente opera en 0,5, y los baselines BASE-0/BASE-1 no tienen umbral (son binarios).
 EVAL_THRESHOLDS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
 DEFAULT_THRESHOLD = 0.5
 

@@ -10,7 +10,7 @@ import pytest
 import torch
 from _fixtures import build_synthetic_dataset
 
-from burn_scar.baselines import BaselineB0Persistence
+from burn_scar.baselines import BaselinePersistence
 from burn_scar.dataset import BurnScarDataset
 from burn_scar.quality import describe_evaluated_set
 
@@ -119,7 +119,7 @@ def test_las_bandas_evaluan_sin_filtrar_las_metricas_globales(tmp_path):
     dataset = BurnScarDataset(index_path=index_path)
 
     result = module.evaluate_model(
-        dataset, BaselineB0Persistence(), "B0", threshold=0.5
+        dataset, BaselinePersistence(), "BASE-0", threshold=0.5
     )
 
     assert set(result["horizon_strata"]) == {"0-1d", "1-3d", "3-7d", "7-14d", "14d+"}
@@ -154,7 +154,7 @@ def test_una_banda_no_informativa_devuelve_nan_y_no_cero(tmp_path):
     dataset = BurnScarDataset(index_path=index_path)
 
     result = module.evaluate_model(
-        dataset, BaselineB0Persistence(), "B0", threshold=0.5
+        dataset, BaselinePersistence(), "BASE-0", threshold=0.5
     )
 
     banda_vacia = result["horizon_strata"]["3-7d"]["assembly"]
@@ -173,7 +173,7 @@ def test_el_arranque_en_frio_no_representado_no_publica_desempeno(tmp_path):
     dataset = BurnScarDataset(index_path=index_path)
 
     result = module.evaluate_model(
-        dataset, BaselineB0Persistence(), "B0", threshold=0.5
+        dataset, BaselinePersistence(), "BASE-0", threshold=0.5
     )
 
     assert result["cold_start"]["represented"] is False
@@ -204,7 +204,7 @@ def test_el_arranque_en_frio_representado_se_mide_sin_fabricarlo(tmp_path):
     dataset = BurnScarDataset(index_path=index_path)
 
     result = module.evaluate_model(
-        dataset, BaselineB0Persistence(), "B0", threshold=0.5
+        dataset, BaselinePersistence(), "BASE-0", threshold=0.5
     )
 
     assert result["cold_start"]["represented"] is True
@@ -229,7 +229,7 @@ def test_modelo_y_baselines_comparten_el_mismo_conjunto_evaluado(tmp_path):
     loader = torch.utils.data.DataLoader(dataset, batch_size=2, shuffle=False)
     model_result = train_module.evaluate_fold(model, loader, device="cpu")
     baseline_result = baselines_module.evaluate_model(
-        dataset, BaselineB0Persistence(), "B0", threshold=0.1
+        dataset, BaselinePersistence(), "BASE-0", threshold=0.1
     )
 
     model_metrics = model_result["per_threshold"][0.1]
@@ -252,7 +252,7 @@ def test_el_umbral_operativo_se_aplica_a_modelo_y_baselines(tmp_path):
     for threshold in (0.1, 0.5):
         model_result = train_module.evaluate_fold(model, loader, device="cpu")
         baseline_result = baselines_module.evaluate_model(
-            dataset, BaselineB0Persistence(), "B0", threshold=threshold
+            dataset, BaselinePersistence(), "BASE-0", threshold=threshold
         )
         model_metrics = model_result["per_threshold"][threshold]
         assert (
