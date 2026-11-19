@@ -4,7 +4,7 @@
 .pytest_cache/
 .ruff_cache/
 __pycache__/
-
+interfaz-gradio-main/
 # TensorBoard y Checkpoints locales
 runs/
 checkpoints/
