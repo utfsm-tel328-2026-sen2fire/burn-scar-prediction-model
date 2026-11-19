@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manual de Uso — Burn Scar Prediction Model</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #1f2937;
+      background: #ffffff;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    .doc {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 36px 32px 48px;
+    }
+
+    /* Cabecera minimalista */
+    header {
+      border-bottom: 2px solid #111827;
+      padding-bottom: 14px;
+      margin-bottom: 20px;
+    }
+
+    header .doc-kicker {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6b7280;
+      margin-bottom: 4px;
+    }
+
+    header h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+      line-height: 1.2;
+    }
+
+    header p.subtitle {
+      margin: 0 0 10px;
+      font-size: 13.5px;
+      color: #4b5563;
+    }
+
+    header .meta {
+      font-size: 11.5px;
+      color: #6b7280;
+    }
+
+    header .meta span + span::before {
+      content: " · ";
+      margin: 0 4px;
+    }
+
+    /* Índice */
+    .toc {
+      border: 1px solid #d1d5db;
+      padding: 14px 18px;
+      margin: 18px 0 24px;
+      background: #fafafa;
+    }
+
+    .toc-title {
+      font-weight: 700;
+      font-size: 13px;
+      margin: 0 0 8px;
+      color: #111827;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .toc ol {
+      margin: 0;
+      padding-left: 18px;
+      columns: 2;
+      column-gap: 28px;
+    }
+
+    .toc li {
+      margin-bottom: 4px;
+      font-size: 12.5px;
+    }
+
+    .toc a {
+      color: #1f2937;
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    /* Encabezados */
+    h2 {
+      font-size: 16.5px;
+      font-weight: 700;
+      color: #111827;
+      margin: 24px 0 10px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #d1d5db;
+    }
+
+    h3 {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #111827;
+      margin: 16px 0 6px;
+    }
+
+    p {
+      margin: 0 0 9px;
+    }
+
+    ul, ol {
+      margin: 0 0 10px;
+      padding-left: 20px;
+    }
+
+    li {
+      margin-bottom: 3px;
+    }
+
+    /* Código */
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11.5px;
+      background: #f3f4f6;
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: #111827;
+    }
+
+    pre {
+      background: #f8f9fa;
+      border: 1px solid #e5e7eb;
+      border-left: 3px solid #374151;
+      padding: 10px 12px;
+      margin: 8px 0 12px;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11.2px;
+      line-height: 1.48;
+      color: #111827;
+      page-break-inside: avoid;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      font-size: inherit;
+    }
+
+    .c {
+      color: #6b7280;
+    }
+
+    /* Tablas */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      font-size: 12px;
+      page-break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f3f4f6;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    /* Notas */
+    .note {
+      border-left: 3px solid #6b7280;
+      background: #f9fafb;
+      padding: 8px 12px;
+      margin: 10px 0 12px;
+      font-size: 12.2px;
+      page-break-inside: avoid;
+    }
+
+    .note strong {
+      color: #111827;
+    }
+
+    /* Diagrama */
+    .figure {
+      margin: 12px 0 16px;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+
+    .figure svg {
+      border: 1px solid #e5e7eb;
+      padding: 8px;
+      background: #ffffff;
+    }
+
+    .caption {
+      font-size: 11.5px;
+      color: #4b5563;
+      margin-top: 5px;
+    }
+
+    /* Espacios para capturas */
+    .screenshot {
+      border: 1px dashed #9ca3af;
+      background: #fafafa;
+      padding: 16px 18px;
+      margin: 12px 0 16px;
+      text-align: center;
+      page-break-inside: avoid;
+    }
+
+    .screenshot .s-title {
+      font-weight: 600;
+      font-size: 12.2px;
+      color: #111827;
+      margin-bottom: 3px;
+    }
+
+    .screenshot .s-desc {
+      font-size: 11.5px;
+      color: #4b5563;
+      margin: 0 auto 6px;
+      max-width: 580px;
+    }
+
+    .screenshot .s-file {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10.8px;
+      color: #6b7280;
+    }
+
+    .screenshot img {
+      max-width: 100%;
+      height: auto;
+      border: 1px solid #d1d5db;
+      margin-top: 6px;
+    }
+
+    .screenshot:has(> img) {
+      border: none;
+      background: transparent;
+      padding: 6px 0;
+    }
+
+    /* Bloque editable para frontend */
+    .todo-block {
+      border: 1px dashed #9ca3af;
+      padding: 10px 12px;
+      margin: 8px 0 12px;
+      background: #fafafa;
+      font-size: 12.2px;
+      color: #374151;
+    }
+
+    .page-break {
+      page-break-before: always;
+      break-before: page;
+    }
+
+    footer {
+      margin-top: 24px;
+      padding-top: 10px;
+      border-top: 1px solid #d1d5db;
+      font-size: 11px;
+      color: #6b7280;
+      text-align: center;
+    }
+
+    @page {
+      size: A4;
+      margin: 15mm 16mm;
+    }
+
+    @media print {
+      body {
+        font-size: 11.5px;
+      }
+      .doc {
+        max-width: 100%;
+        padding: 0;
+      }
+      h2, h3 {
+        page-break-after: avoid;
+        break-after: avoid;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+
+    <!-- ==================== CABECERA + ÍNDICE ==================== -->
+    <header>
+      <div class="doc-kicker">Documentación Técnica y Manual de Uso · TEL328</div>
+      <h1>Burn Scar Prediction Model</h1>
+      <p class="subtitle">
+        Predicción multi-horizonte del crecimiento de cicatrices de incendios forestales en el
+        Mediterráneo a partir de imágenes satelitales abiertas.
+      </p>
+      <div class="meta">
+        <span>Modelo: ConvLSTM + SegFormer (~780k parámetros)</span>
+        <span>Resolución: 300 m/px (64×64)</span>
+        <span>Python &ge; 3.11 + <code>uv</code></span>
+      </div>
+    </header>
+
+    <p>
+      Este documento explica cómo instalar, configurar, entrenar, monitorear y usar el proyecto
+      <strong>Burn Scar Prediction Model</strong>. Está organizado paso a paso para poder replicar
+      todo desde cero o partir directamente con los archivos preprocesados y checkpoints listos
+      para usar.
+    </p>
+
+    <nav class="toc" aria-label="Índice">
+      <div class="toc-title">Índice</div>
+      <ol>
+        <li><a href="#sec-1">Descripción general y funcionamiento</a></li>
+        <li><a href="#sec-2">Librerías, instalación y archivos externos</a></li>
+        <li><a href="#sec-3">Configuración inicial y almacenamiento</a></li>
+        <li><a href="#sec-4">Preparación del dataset y baselines</a></li>
+        <li><a href="#sec-5">Entrenamiento y parámetros</a></li>
+        <li><a href="#sec-6">TensorBoard, evaluación y visualización</a></li>
+        <li><a href="#sec-7">Uso del Frontend (espacio equipo Frontend)</a></li>
+        <li><a href="#sec-8">Problemas frecuentes</a></li>
+      </ol>
+    </nav>
+
+    <!-- ==================== SECCIÓN 1 ==================== -->
+    <section id="sec-1">
+      <h2>1. Descripción general y funcionamiento</h2>
+
+      <p>
+        El objetivo del sistema no es solo detectar dónde ya ocurrió un incendio, sino
+        <strong>predecir qué zonas nuevas se quemarán en los próximos <em>h</em> días</strong>
+        (predicción de propagación). Como entrada recibe imágenes satelitales de
+        <strong>Sentinel-3 OLCI</strong> (5 bandas a 300 m, revisita ~2–3 días), topografía
+        (<strong>Copernicus DEM</strong>), cobertura de suelo (<strong>ESA WorldCover</strong>),
+        la cicatriz actual estimada y el horizonte continuo <em>h</em> en días.
+      </p>
+
+      <ul>
+        <li><strong>Cicatriz actual con TMB-S3 congelado:</strong> en operación real no existen delineaciones inmediatas de emergencia (CEMS). Por eso, la cicatriz actual (<code>x_scar</code>) la genera TMB-S3 congelado sobre Sentinel-3, asegurando que entrenamiento e inferencia reciban exactamente el mismo tipo de entrada.</li>
+        <li><strong>Arquitectura:</strong> un encoder temporal <strong>ConvLSTM</strong> seguido de un extractor espacial <strong>SegFormer</strong> y una cabeza de propagación que devuelve un mapa de probabilidad píxel a píxel en <code>[0, 1]</code>.</li>
+        <li><strong>Dos etapas de aprendizaje:</strong> permite preentrenar en eventos históricos de MODIS <strong>MCD64A1</strong> (Etapa <strong>M-A</strong>) y luego hacer ajuste fino en las series limpias de <strong>CEMS</strong> con validación cruzada de 5 folds por cluster geográfico (Etapa <strong>M-B</strong>).</li>
+        <li><strong>Dataset limpio:</strong> de las 96 series mediterráneas de CEMS se excluyen 50 que TMB-S3 vio en su entrenamiento original, quedando <strong>296 muestras en 40 series</strong> (ventanas fijas de <code>64×64</code> px = 19,2 km).</li>
+      </ul>
+
+      <div class="figure">
+        <svg viewBox="0 0 760 175" width="100%" height="auto" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Flujo del modelo">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill="#374151" />
+            </marker>
+          </defs>
+
+          <rect x="10" y="14" width="175" height="145" rx="4" fill="#fafafa" stroke="#9ca3af"/>
+          <text x="97" y="34" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">ENTRADAS (64×64 px)</text>
+          <text x="97" y="58" text-anchor="middle" font-size="10.5" fill="#374151">Sentinel-3 OLCI (5 bandas)</text>
+          <text x="97" y="80" text-anchor="middle" font-size="10.5" fill="#374151">Copernicus DEM</text>
+          <text x="97" y="102" text-anchor="middle" font-size="10.5" fill="#374151">ESA WorldCover</text>
+          <text x="97" y="124" text-anchor="middle" font-size="10.5" fill="#374151">Horizonte h (días)</text>
+          <text x="97" y="146" text-anchor="middle" font-size="9.5" fill="#6b7280">300 m/px · ~2-3 días</text>
+
+          <line x1="185" y1="54" x2="225" y2="54" stroke="#374151" stroke-width="1.4" marker-end="url(#arr)"/>
+
+          <rect x="228" y="26" width="142" height="56" rx="4" fill="#f3f4f6" stroke="#374151"/>
+          <text x="299" y="47" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">TMB-S3 (Congelado)</text>
+          <text x="299" y="64" text-anchor="middle" font-size="10" fill="#4b5563">Genera cicatriz x_scar(f)</text>
+
+          <line x1="370" y1="54" x2="412" y2="82" stroke="#374151" stroke-width="1.4" marker-end="url(#arr)"/>
+          <line x1="185" y1="108" x2="412" y2="108" stroke="#374151" stroke-width="1.4" marker-end="url(#arr)"/>
+
+          <rect x="415" y="48" width="158" height="82" rx="4" fill="#1f2937" stroke="#111827"/>
+          <text x="494" y="72" text-anchor="middle" font-size="11" font-weight="700" fill="#ffffff">MODELO PROPAGACIÓN</text>
+          <text x="494" y="92" text-anchor="middle" font-size="10" fill="#e5e7eb">ConvLSTM + SegFormer</text>
+          <text x="494" y="110" text-anchor="middle" font-size="9.5" fill="#d1d5db">~780k parámetros</text>
+
+          <line x1="573" y1="89" x2="608" y2="89" stroke="#374151" stroke-width="1.4" marker-end="url(#arr)"/>
+
+          <rect x="611" y="48" width="139" height="82" rx="4" fill="#fafafa" stroke="#374151"/>
+          <text x="680" y="72" text-anchor="middle" font-size="11" font-weight="700" fill="#111827">SALIDA</text>
+          <text x="680" y="91" text-anchor="middle" font-size="10" fill="#374151">Prob. nueva quema</text>
+          <text x="680" y="108" text-anchor="middle" font-size="10" fill="#374151">en (f, f + h] → [0..1]</text>
+        </svg>
+        <div class="caption">Figura 0. Flujo general de datos desde la entrada satelital hasta la predicción de propagación.</div>
+      </div>
+    </section>
+
+    <!-- ==================== SECCIÓN 2 ==================== -->
+    <section id="sec-2" class="page-break">
+      <h2>2. Librerías necesarias, instalación y descarga de archivos</h2>
+
+      <h3>2.1 Requisitos y librerías</h3>
+      <p>
+        Se requiere <strong>Linux</strong> (recomendado), <strong>Python &ge; 3.11</strong> y el gestor
+        <code>uv</code>. El archivo <code>pyproject.toml</code> gestiona las siguientes dependencias principales:
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Librería</th>
+            <th>Versión</th>
+            <th>Uso en el proyecto</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>torch</code>, <code>torchvision</code></td>
+            <td>&ge; 2.7 / &ge; 0.22</td>
+            <td>Entrenamiento e inferencia (extras excluyentes: <code>cuda</code>, <code>rocm</code> o <code>cpu</code>).</td>
+          </tr>
+          <tr>
+            <td><code>earthengine-api</code></td>
+            <td>&ge; 1.7.52</td>
+            <td>Descarga de parches OLCI, MODIS MCD64A1, DEM y WorldCover desde Google Earth Engine.</td>
+          </tr>
+          <tr>
+            <td><code>rasterio</code>, <code>pyproj</code>, <code>shapely</code></td>
+            <td>&ge; 1.4 / 3.7 / 2.2</td>
+            <td>Lectura de GeoTIFF, proyección UTM a 300 m y rasterización de polígonos CEMS.</td>
+          </tr>
+          <tr>
+            <td><code>numpy</code>, <code>zarr</code>, <code>scikit-learn</code></td>
+            <td>&ge; 1.26 / 3.1 / 1.9</td>
+            <td>Manejo de tensores <code>.npz</code>, lectura de tiles TMB-S3, clustering DBSCAN y métricas.</td>
+          </tr>
+          <tr>
+            <td><code>huggingface-hub</code>, <code>safetensors</code></td>
+            <td>&ge; 2.4 / &ge; 0.8</td>
+            <td>Descarga y carga de pesos congelados de TMB-S3.</td>
+          </tr>
+          <tr>
+            <td><code>tensorboard</code></td>
+            <td>&ge; 2.18</td>
+            <td>Visualización de curvas de entrenamiento (SCALARS) y mapas de predicción (IMAGES).</td>
+          </tr>
+          <tr>
+            <td><code>pytest</code>, <code>ruff</code> (dev)</td>
+            <td>&ge; 8 / &ge; 0.8</td>
+            <td>Pruebas automáticas y revisión de estilo de código.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>2.2 Instalación paso a paso</h3>
+      <pre><code><span class="c"># 1. Clonar el repositorio</span>
+git clone &lt;URL_DEL_REPOSITORIO&gt;
+cd burn-scar-prediction-model
+
+<span class="c"># 2. Instalar uv (si no está instalado)</span>
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+<span class="c"># 3. Instalar dependencias (elegir SOLO UNA opción según tu hardware)</span>
+uv sync --extra cuda   <span class="c"># NVIDIA (CUDA 12.8)</span>
+uv sync --extra rocm   <span class="c"># AMD (ROCm 6.4)</span>
+uv sync --extra cpu    <span class="c"># Solo CPU</span>
+
+<span class="c"># 4. Verificar GPU y escritura de TensorBoard</span>
+uv run --extra cuda python scripts/check_env.py   <span class="c"># cambiar 'cuda' por 'rocm' o 'cpu'</span></code></pre>
+
+      <p class="note">
+        <strong>NixOS:</strong> el repositorio incluye <code>devenv.nix</code> para trabajar en un entorno
+        reproducible con las librerías nativas (<code>libexpat.so.1</code> para <code>rasterio</code>).
+      </p>
+
+      <h3>2.3 Descarga de datos y pesos preentrenados (Google Drive — llegar y usar)</h3>
+      <p>
+        Los datasets procesados y los checkpoints no se suben a Git por su tamaño. Para usar el proyecto
+        sin tener que descargar imágenes desde Google Earth Engine, descarga el paquete comprimido y
+        descomprímelo en la raíz del repositorio:
+      </p>
+      <p class="note">
+        <strong>Enlace de descarga (Google Drive):</strong> <code>https://drive.google.com/file/d/1rinLTk0nSbPBATFM_2esE8rzxyTqKFPQ/view?usp=sharing</code><br />
+        Al descomprimirlo en la raíz del proyecto deben quedar las carpetas <code>data/processed/</code>,
+        <code>data/cems_manifest_46.json</code>, <code>checkpoints/</code> y <code>models/tmb_s3/</code>.
+      </p>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_01.png" alt="Verificación del entorno (scripts/check_env.py)" />
+        <div class="caption">Figura 1. Verificación del entorno (<code>scripts/check_env.py</code>): detección de GPU, cómputo y escritura de logs de TensorBoard.</div>
+      </div>
+    </section>
+
+    <!-- ==================== SECCIÓN 3 ==================== -->
+    <section id="sec-3" class="page-break">
+      <h2>3. Configuración inicial y dónde se guarda todo</h2>
+
+      <h3>3.1 Archivo de configuración <code>.env</code></h3>
+      <p>
+        Cada máquina usa su propio archivo <code>.env</code> en la raíz del proyecto (ignorado por Git).
+        Se crea copiando la plantilla: <code>cp .env.example .env</code>.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Variable</th>
+            <th>Ejemplo / valor por defecto</th>
+            <th>Descripción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>BURNSCAR_SHARED_STORAGE</code></td>
+            <td><code>/home/usuario/TK_Stratego/Shared</code></td>
+            <td>Ruta de montaje NFS compartida para sincronizar logs y checkpoints. Si no existe o queda vacía, usa respaldo local (<code>./runs</code> y <code>./checkpoints</code>).</td>
+          </tr>
+          <tr>
+            <td><code>BURNSCAR_USER</code></td>
+            <td><code>antonio</code></td>
+            <td>Identificador para prefijar tus carpetas (<code>&lt;usuario&gt;_&lt;tag&gt;_&lt;timestamp&gt;</code>) y no pisar experimentos de otros integrantes.</td>
+          </tr>
+          <tr>
+            <td><code>BURNSCAR_TENSORBOARD_PORT</code></td>
+            <td><code>6006</code></td>
+            <td>Puerto HTTP por defecto para TensorBoard.</td>
+          </tr>
+          <tr>
+            <td><code>EARTHENGINE_PROJECT</code></td>
+            <td><code>mi-proyecto-gcp</code> (opcional)</td>
+            <td>Proyecto de Google Cloud habilitado para Earth Engine (solo si vas a descargar datos satelitales nuevos).</td>
+          </tr>
+          <tr>
+            <td><code>EARTHENGINE_SERVICE_ACCOUNT</code></td>
+            <td><code>~/.config/earthengine/sa.json</code></td>
+            <td>Clave JSON de cuenta de servicio para servidores sin navegador. En PC normal basta usar <code>earthengine authenticate</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>Para verificar credenciales de Earth Engine antes de descargar: <code>uv run python scripts/check_ee_access.py</code>.</p>
+
+      <h3>3.2 Estructura de almacenamiento</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Ruta</th>
+            <th>Contenido</th>
+            <th>Notas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>data/raw/</code>, <code>data/raw_mcd/</code></td>
+            <td>Imágenes satelitales crudas (OLCI, DEM, WorldCover, MODIS) y vectores CEMS.</td>
+            <td>Solo necesario si regeneras el dataset desde cero.</td>
+          </tr>
+          <tr>
+            <td><code>data/processed/</code></td>
+            <td>Muestras PyTorch (<code>samples/*.npz</code>) e índice <code>dataset_index.json</code>.</td>
+            <td>Generado por <code>build_pytorch_dataset.py</code> (o descargado de Drive).</td>
+          </tr>
+          <tr>
+            <td><code>checkpoints/&lt;run&gt;/</code></td>
+            <td>Mejores pesos por fold (<code>best_fold_0..4.pt</code>) y umbral congelado (<code>operational_threshold.json</code>).</td>
+            <td>En NFS (<code>.../burn_scar/checkpoints/</code>) o en <code>./checkpoints/</code> local.</td>
+          </tr>
+          <tr>
+            <td><code>runs/&lt;run&gt;/</code></td>
+            <td>Eventos de TensorBoard (<code>events.out.tfevents.*</code>) y logs de ejecución (<code>*.log</code>).</td>
+            <td>En NFS (<code>.../burn_scar/runs/</code>) o en <code>./runs/</code> local.</td>
+          </tr>
+          <tr>
+            <td><code>outputs/</code></td>
+            <td>Paneles de predicción exportados en formato <code>.png</code>.</td>
+            <td>Se especifica con <code>--save-dir</code>.</td>
+          </tr>
+          <tr>
+            <td><code>artefactos/canonicos.json</code></td>
+            <td>Huellas SHA-256 de índices y checkpoints oficiales para validar integridad.</td>
+            <td>Versionado en Git.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_02.png" alt="Configuración .env y verificación de acceso" />
+        <div class="caption">Figura 2. Configuración del archivo <code>.env</code> y verificación de rutas / acceso.</div>
+      </div>
+    </section>
+
+    <!-- ==================== SECCIÓN 4 ==================== -->
+    <section id="sec-4" class="page-break">
+      <h2>4. Preparación del dataset y baselines</h2>
+
+      <p>
+        Si ya descargaste <code>data/processed/</code> desde el Drive, puedes saltar directo a la evaluación
+        de baselines o a la Sección 5. Si modificaste el preprocesamiento o descargas datos crudos nuevos,
+        debes regenerar los archivos <code>.npz</code> antes de entrenar:
+      </p>
+
+      <pre><code><span class="c"># 1. Descarga de datos crudos (solo si no los tienes)</span>
+uv run python scripts/download_cems_vectors.py
+uv run python scripts/download_gee_olci.py
+uv run python scripts/rasterize_cems_labels.py
+
+<span class="c"># 2. Ensamblar dataset PyTorch (ejecuta TMB-S3 congelado; ~20 s en GPU)</span>
+uv run --extra rocm python scripts/build_pytorch_dataset.py
+
+<span class="c"># 3. Auditar integridad del índice (verifica ausencia de duplicados y capas vacías)</span>
+uv run --extra rocm python scripts/audit_dataset_integrity.py \
+  --index data/processed/dataset_index.json \
+  --output runs/dataset_integrity_production.json
+
+<span class="c"># 4. Evaluar baselines de referencia (B0 persistencia, B1 dilatación radial y trivial)</span>
+uv run --extra rocm python scripts/evaluate_baselines.py</code></pre>
+
+      <div class="note">
+        <strong>Etiquetas y máscaras dentro de cada <code>.npz</code>:</strong>
+        cada muestra guarda dos objetivos: <code>target</code> (<strong>ensamblaje</strong>:
+        <code>CEMS(r+h) - scar_TMB3(f)</code>, usado para entrenar) y <code>target_cems</code>
+        (<strong>referencia</strong>: crecimiento real entre rondas CEMS, que es la métrica publicable
+        de propagación). Las máscaras usan <code>1</code> = píxel evaluable y <code>255</code> = ignorado.
+      </div>
+
+      <p>
+        <strong>Opcional — Dataset MODIS (MCD64A1) para preentrenamiento M-A:</strong>
+      </p>
+      <pre><code>uv run python scripts/build_mcd64a1_manifest.py --max-events 500
+uv run python scripts/download_gee_mcd64a1.py --manifest data/mcd_manifest.json
+uv run --extra rocm python scripts/build_mcd64a1_dataset.py</code></pre>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_03.png" alt="Ensamblado del dataset y evaluación de baselines" />
+        <div class="caption">Figura 3. Ensamblado del dataset (296 muestras en 40 series) y evaluación de baselines de referencia.</div>
+      </div>
+    </section>
+
+    <!-- ==================== SECCIÓN 5 ==================== -->
+    <section id="sec-5" class="page-break">
+      <h2>5. Entrenamiento y configuraciones</h2>
+
+      <p>
+        El entrenamiento se realiza con <code>scripts/train_propagation.py</code> usando validación cruzada
+        agrupada de <strong>5 folds</strong> (<code>0..4</code>). El <strong>fold -1</strong> queda reservado
+        como test final. Al concluir los 5 folds, el script toma la mediana de los mejores umbrales de
+        validación, la congela en <code>operational_threshold.json</code> y evalúa el test una sola vez.
+      </p>
+
+      <h3>5.1 Comandos de ejecución</h3>
+      <pre><code><span class="c"># A) Entrenamiento estándar (lanzado con nohup para evitar cortes)</span>
+nohup uv run --extra rocm python scripts/train_propagation.py \
+  --epochs 15 --seed 42 --tag prop_v4_integrity \
+  &gt; runs/prop_v4_integrity.log 2&gt;&amp;1 &amp;
+
+tail -f runs/prop_v4_integrity.log
+
+<span class="c"># B) Etapa M-A (preentrenamiento MODIS) + Etapa M-B (ajuste fino CEMS con Tversky)</span>
+uv run --extra rocm python scripts/pretrain_mcd64a1.py \
+  --epochs 10 --output-checkpoint checkpoints/mcd_pretrained.pt
+
+uv run --extra rocm python scripts/train_propagation.py \
+  --epochs 15 --seed 42 \
+  --init-checkpoint checkpoints/mcd_pretrained.pt \
+  --tversky-alpha 0.7 --tversky-beta 0.3 --max-pos-weight 5.0 \
+  --tag prop_m_b_tversky</code></pre>
+
+      <h3>5.2 Parámetros principales de <code>train_propagation.py</code></h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Flag</th>
+            <th>Default</th>
+            <th>Función</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>--epochs</code> / <code>--batch-size</code></td>
+            <td><code>15</code> / <code>8</code></td>
+            <td>Épocas por fold y tamaño de lote (~1,5–2 min en total para 5 folds en GPU).</td>
+          </tr>
+          <tr>
+            <td><code>--lr</code> / <code>--hidden-ch</code></td>
+            <td><code>3e-4</code> / <code>32</code></td>
+            <td>Tasa de aprendizaje (Adam) y canales ocultos del ConvLSTM.</td>
+          </tr>
+          <tr>
+            <td><code>--folds</code> / <code>--seed</code></td>
+            <td><code>0 1 2 3 4</code> / <code>42</code></td>
+            <td>Folds a entrenar y semilla de reproducibilidad.</td>
+          </tr>
+          <tr>
+            <td><code>--scar-corruption</code></td>
+            <td><code>0.15</code></td>
+            <td>Borra ~15% de la cicatriz de entrada y deforma su borde para tolerar errores de TMB-S3.</td>
+          </tr>
+          <tr>
+            <td><code>--max-pos-weight</code></td>
+            <td><code>5.0</code></td>
+            <td>Tope del peso positivo en BCE para manejar el desbalance de clases.</td>
+          </tr>
+          <tr>
+            <td><code>--tversky-alpha</code> / <code>--tversky-beta</code></td>
+            <td><code>0.7</code> / <code>0.3</code></td>
+            <td>Pesos de la pérdida Tversky (penalizar más FP mejora precisión y estabilidad del umbral).</td>
+          </tr>
+          <tr>
+            <td><code>--init-checkpoint</code></td>
+            <td><code>None</code></td>
+            <td>Checkpoint inicial para fine-tuning (ej. <code>checkpoints/mcd_pretrained.pt</code>).</td>
+          </tr>
+          <tr>
+            <td><code>--num-workers</code> / <code>--pin-memory</code></td>
+            <td><em>Auto</em></td>
+            <td>Auto-detecta backend: usa <code>0</code> workers en AMD ROCm y <code>2</code> en NVIDIA CUDA.</td>
+          </tr>
+          <tr>
+            <td><code>--tag</code></td>
+            <td><code>propagation_...</code></td>
+            <td>Nombre identificador del run en <code>runs/</code> y <code>checkpoints/</code>.</td>
+          </tr>
+          <tr>
+            <td><code>--eval-only &lt;dir&gt;</code></td>
+            <td><code>None</code></td>
+            <td>Reevalúa un run ya entrenado sobre el test usando su umbral congelado.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_04.png" alt="Terminal durante el entrenamiento y resumen final" />
+        <div class="caption">Figura 4. Ejecución del entrenamiento por folds, evaluación en test y guardado de checkpoints y umbral operativo.</div>
+      </div>
+    </section>
+
+    <!-- ==================== SECCIÓN 6 ==================== -->
+    <section id="sec-6" class="page-break">
+      <h2>6. TensorBoard, evaluación y visualización</h2>
+
+      <h3>6.1 Monitoreo en TensorBoard</h3>
+      <p>
+        El script <code>launch_tensorboard.py</code> detecta automáticamente si estás usando el NFS
+        compartido o la carpeta local <code>./runs</code> y levanta el servidor web:
+      </p>
+      <pre><code>uv run --extra cuda python scripts/launch_tensorboard.py
+<span class="c"># Opciones útiles: --port 6007  |  --host 0.0.0.0  |  --dry-run</span></code></pre>
+      <p>
+        Al abrir <code>http://localhost:6006</code>: en <strong>SCALARS</strong> puedes filtrar por nombre de
+        usuario en la barra izquierda para comparar curvas (<code>Loss/train</code>, <code>Loss/val</code>,
+        <code>F1</code>, <code>IoU</code>); en <strong>IMAGES</strong> aparecen los mapas generados por el visualizador.
+      </p>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_05.png" alt="TensorBoard (pestaña SCALARS)" />
+        <div class="caption">Figura 5. Interfaz de TensorBoard (pestaña SCALARS) con las curvas de entrenamiento y validación.</div>
+      </div>
+
+      <h3>6.2 Visualización espacial de predicciones</h3>
+      <p>
+        Para inspeccionar un checkpoint en su fold de validación y exportar los paneles a TensorBoard y PNG:
+      </p>
+      <pre><code>uv run --extra rocm python scripts/visualize_predictions.py \
+  --checkpoint checkpoints/&lt;run_namespace&gt;/best_fold_0.pt \
+  --mode both --n-samples 6 --threshold 0.20 --scale 3 \
+  --save-dir outputs/vis_fold0</code></pre>
+      <p>
+        Modos disponibles (<code>--mode</code>): <code>both</code> (N mejores y N peores), <code>best</code>,
+        <code>worst</code>, <code>series --series-id &lt;ID&gt;</code>, <code>indices --indices 0 5</code> y
+        <code>random</code>. Cada panel muestra 5 bloques: <strong>1) OLCI pseudo-RGB</strong>,
+        <strong>2) cicatriz previa <code>x_scar</code></strong>, <strong>3) <code>target</code> real</strong>,
+        <strong>4) mapa de probabilidad</strong> y <strong>5) overlay TP/FP/FN</strong>
+        (azul = cicatriz previa, verde = acierto TP, rojo = falsa alarma FP, amarillo = omisión FN, gris = ignorado).
+      </p>
+
+      <div class="screenshot">
+        <img src="capturas_html/captura_06.png" alt="Panel de predicción de 5 bloques" />
+        <div class="caption">Figura 6. Panel de predicción espacial de 5 bloques exportado por <code>visualize_predictions.py</code>.</div>
+      </div>
+
+      <h3>6.3 Evaluación, barrido de umbrales y resultados de referencia</h3>
+      <pre><code>uv run --extra rocm python scripts/sweep_thresholds.py --checkpoint-dir checkpoints/&lt;run&gt; --split test
+uv run --extra rocm python scripts/evaluate_baselines.py --operational-threshold-from checkpoints/&lt;run&gt;
+uv run --extra rocm python scripts/verify_canonical_artifacts.py</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Modelo (Test fold -1 · 25 muestras, 7 series)</th>
+            <th>Umbral</th>
+            <th>F1 Ensamblaje</th>
+            <th>F1 Referencia</th>
+            <th>Precisión</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>B0 Persistencia / B1 Dilatación radial</td>
+            <td>0,10</td>
+            <td>0,00% / 15,94%</td>
+            <td>0,00% / 7,30%</td>
+            <td>0,00% / 19,11%</td>
+          </tr>
+          <tr>
+            <td>Trivial "todo quemado"</td>
+            <td>0,10</td>
+            <td>16,29%</td>
+            <td>8,42%</td>
+            <td>9,41%</td>
+          </tr>
+          <tr>
+            <td>M-A (<code>mcd_pretrained</code>, cero-disparo sin CEMS)</td>
+            <td>0,10</td>
+            <td>19,71%</td>
+            <td>10,61%</td>
+            <td>14,05%</td>
+          </tr>
+          <tr>
+            <td>M-B + Tversky (<code>prop_m_b_tversky</code>, &alpha;=0,7)</td>
+            <td>0,10</td>
+            <td>32,90%</td>
+            <td>10,08%</td>
+            <td><strong>39,53%</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Producción</strong> (<code>prop_v4_integrity</code>)</td>
+            <td>0,10 / 0,20</td>
+            <td><strong>36,46% / 39,34%</strong></td>
+            <td><strong>14,68%</strong> / 10,59%</td>
+            <td>28,40% / 33,12%</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ==================== SECCIÓN 7: FRONTEND ==================== -->
+    <section id="sec-7" class="page-break">
+      <h2>7. Uso del Frontend / Interfaz Web</h2>
+
+      <p class="note">
+        <strong>Sección reservada para el equipo de Frontend:</strong> completar los bloques siguientes
+        con las instrucciones reales de instalación, descripción de la interfaz y capturas de pantalla.
+      </p>
+
+      <h3>7.1 Requisitos, librerías e instalación</h3>
+      <div class="todo-block">
+        [COMPLETAR FRONTEND] Indicar framework utilizado, versión de Node.js/Python, librerías de mapas
+        y variables de entorno de conexión con la API/backend (ej. <code>VITE_API_URL</code>).
+      </div>
+      <pre><code><span class="c"># [COMPLETAR FRONTEND] Comandos de instalación y arranque</span>
+cd frontend
+npm install
+npm run dev</code></pre>
+
+      <h3>7.2 Funcionalidades de la interfaz</h3>
+      <div class="todo-block">
+        [COMPLETAR FRONTEND] Resumir qué permite hacer la aplicación web: visualización del mapa, selección
+        de evento/AOI, selección del horizonte <em>h</em>, capas de probabilidad/umbral y exportación.
+      </div>
+
+      <div class="screenshot">
+        <div class="s-title">Figura 7 — Vista principal de la aplicación web</div>
+        <div class="s-desc">Captura de la pantalla inicial del frontend (mapa y controles principales).</div>
+        <div class="s-file">Reemplazar con: &lt;img src="capturas_html/captura_07.png" alt="Frontend inicio"&gt;</div>
+        <!-- <img src="capturas_html/captura_07.png" alt="Frontend inicio" /> -->
+      </div>
+
+      <h3>7.3 Guía de uso paso a paso</h3>
+      <div class="todo-block">
+        [COMPLETAR FRONTEND] Explicar paso a paso el flujo normal de usuario:<br />
+        1. Selección de zona o incendio.<br />
+        2. Configuración de parámetros (horizonte <em>h</em>, umbral, fecha) y ejecución de la consulta.<br />
+        3. Interpretación del mapa resultante y métricas mostradas en pantalla.
+      </div>
+
+      <div class="screenshot">
+        <div class="s-title">Figura 8 — Selección de parámetros de predicción</div>
+        <div class="s-desc">Captura del panel o formulario donde se configura la predicción.</div>
+        <div class="s-file">Reemplazar con: &lt;img src="capturas_html/captura_08.png" alt="Parámetros Frontend"&gt;</div>
+        <!-- <img src="capturas_html/captura_08.png" alt="Parámetros Frontend" /> -->
+      </div>
+
+      <div class="screenshot">
+        <div class="s-title">Figura 9 — Visualización de resultados en el mapa</div>
+        <div class="s-desc">Captura del mapa con la predicción desplegada, leyenda y métricas.</div>
+        <div class="s-file">Reemplazar con: &lt;img src="capturas_html/captura_09.png" alt="Resultados Frontend"&gt;</div>
+        <!-- <img src="capturas_html/captura_09.png" alt="Resultados Frontend" /> -->
+      </div>
+    </section>
+
+    <!-- ==================== SECCIÓN 8: FAQ ==================== -->
+    <section id="sec-8">
+      <h2>8. Problemas frecuentes</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Problema</th>
+            <th>Solución</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Entrenamiento muy lento en AMD (ROCm)</td>
+            <td>En ROCm, <code>num_workers &gt; 0</code> o <code>pin_memory=True</code> bloquean el contexto HIP (~80 s/época vs 1,7 s). Usa el modo automático o fuerza <code>--num-workers 0 --no-pin-memory</code>.</td>
+          </tr>
+          <tr>
+            <td>Error de permisos en Google Earth Engine</td>
+            <td>Ejecuta <code>scripts/check_ee_access.py</code>. La cuenta de servicio necesita los roles <code>earthengine.resourceAdmin</code> y <code>serviceusage.serviceUsageConsumer</code>, y el proyecto debe estar registrado en EE.</td>
+          </tr>
+          <tr>
+            <td>No aparece el almacenamiento compartido NFS</td>
+            <td>Si <code>BURNSCAR_SHARED_STORAGE</code> no está montado, el tracker cambia automáticamente a <code>./runs</code> y <code>./checkpoints</code> en local sin detener el entrenamiento.</td>
+          </tr>
+          <tr>
+            <td>Cambios en el dataset no se reflejan al entrenar</td>
+            <td>Las entradas y targets quedan guardados en los <code>.npz</code>. Siempre re-ejecuta <code>scripts/build_pytorch_dataset.py</code> tras modificar el preprocesamiento.</td>
+          </tr>
+          <tr>
+            <td><code>F1 = NaN</code> en algunas muestras</td>
+            <td>Es normal cuando la verdad de esa muestra no tiene píxeles quemados por encima del umbral (cuenta como no evaluable, no como 0).</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      Manual de Uso — Burn Scar Prediction Model · TEL328 · Imprimir a PDF (Ctrl+P) en formato A4.
+    </footer>
+
+  </div>
+</body>
+</html>
